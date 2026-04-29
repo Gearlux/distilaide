@@ -1,0 +1,14 @@
+# Apply the deepinv DnCNN pretrained denoiser to a numpy image.
+#
+# Requires the [deepinv] extra:
+#   pip install -e ".[deepinv]"
+#
+# DnCNN was trained for Gaussian noise; ``sigma`` is unused for blind
+# variants but accepted for API symmetry with DRUNet/SCUNet.
+
+denoiser: !class:distilaide.Denoiser
+  method: dncnn
+  device: cpu
+
+input: examples/data/noisy.npy
+output: examples/data/clean_dncnn.npy

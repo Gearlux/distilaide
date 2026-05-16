@@ -1,6 +1,6 @@
 # Distilaide
 
-Septet (logflow / confluid / liquifai) adapter over four denoising libraries — AI and classical — exposed through one `denoise()` dispatcher and one Confluid-`@configurable` `Denoiser`.
+(logflow / confluid / liquifai) adapter over four denoising libraries — AI and classical — exposed through one `denoise()` dispatcher and one Confluid-`@configurable` `Denoiser`.
 
 | Backend | Domain | Methods | Extra |
 |---|---|---|---|
@@ -194,9 +194,9 @@ The denoising landscape is well-served by mature upstream packages — `deepinv`
 What distilaide adds:
 
 - One Python entry point (`denoise(signal, method=...)`) instead of four library APIs.
-- One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside DataFlux pipelines, marainer training loops, or any other Septet config.
+- One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside DataFlux pipelines, marainer training loops, or any other config.
 - logflow integration for unified logging across the workspace.
-- liquifai CLI matching the rest of the Septet.
+- liquifai CLI matching the rest of the .
 - Lazy imports so the package itself works with any subset of `[classical]` / `[deepinv]` / `[asteroid]` installed.
 
 If you only need one backend, use it directly. If you want to write code that swaps denoisers via config, distilaide is the glue.

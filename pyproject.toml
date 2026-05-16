@@ -1,7 +1,7 @@
 [project]
 name = "distilaide"
 version = "0.1.0"
-description = "Septet (logflow / confluid / liquifai) adapter over deepinv, asteroid, BM3D, and noisereduce for AI and classical denoising."
+description = "(logflow / confluid / liquifai) adapter over deepinv, asteroid, BM3D, and noisereduce for AI and classical denoising."
 authors = [{name = "Taidal"}]
 license = {text = "MIT"}
 dependencies = [

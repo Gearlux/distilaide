@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 if "." not in sys.path:
     sys.path.insert(0, ".")
 
-app = LiquifyApp(name="distilaide", description="Septet adapter over deepinv/asteroid/bm3d/noisereduce.")
+app = LiquifyApp(name="distilaide", description="adapter over deepinv/asteroid/bm3d/noisereduce.")
 
 
 def _load_signal(path: Path) -> Tuple[np.ndarray, dict[str, Any]]:

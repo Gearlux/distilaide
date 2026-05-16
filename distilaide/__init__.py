@@ -1,4 +1,4 @@
-"""Distilaide — Septet adapter over deepinv, asteroid, BM3D, and noisereduce.
+"""Distilaide — adapter over deepinv, asteroid, BM3D, and noisereduce.
 
 A thin glue layer that exposes a single :func:`distilaide.denoise` dispatcher
 and a Confluid-:class:`distilaide.Denoiser` configurable, wrapping four

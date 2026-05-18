@@ -31,9 +31,6 @@ from distilaide.api import Denoiser, list_methods
 
 logger = get_logger(__name__)
 
-if "." not in sys.path:
-    sys.path.insert(0, ".")
-
 app = LiquifyApp(name="distilaide", description="adapter over deepinv/asteroid/bm3d/noisereduce.")
 
 

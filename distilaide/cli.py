@@ -19,7 +19,6 @@ inspects the actual class objects from parameter annotations and PEP 563
 string annotations break that lookup.
 """
 
-import sys
 from pathlib import Path
 from typing import Any, Tuple
 

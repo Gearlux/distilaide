@@ -11,6 +11,7 @@ Available via ``pip install distilaide[classical]``.
 from typing import Any
 
 import numpy as np
+
 from logflow import get_logger
 
 logger = get_logger(__name__)
@@ -29,7 +30,9 @@ def is_available() -> bool:
     return True
 
 
-def denoise(signal: np.ndarray, sigma: float = 0.1, method: str = "bm3d", **_: Any) -> np.ndarray:
+def denoise(
+    signal: np.ndarray, sigma: float = 0.1, method: str = "bm3d", **_: Any
+) -> np.ndarray:
     """Denoise ``signal`` with BM3D.
 
     Args:

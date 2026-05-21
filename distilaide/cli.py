@@ -23,14 +23,16 @@ from pathlib import Path
 from typing import Any, Tuple
 
 import numpy as np
+
+from distilaide.api import Denoiser, list_methods
 from liquifai import LiquifyApp, get_context
 from logflow import get_logger
 
-from distilaide.api import Denoiser, list_methods
-
 logger = get_logger(__name__)
 
-app = LiquifyApp(name="distilaide", description="adapter over deepinv/asteroid/bm3d/noisereduce.")
+app = LiquifyApp(
+    name="distilaide", description="adapter over deepinv/asteroid/bm3d/noisereduce."
+)
 
 
 def _load_signal(path: Path) -> Tuple[np.ndarray, dict[str, Any]]:
@@ -69,7 +71,9 @@ def _save_signal(path: Path, signal: np.ndarray, meta: dict[str, Any]) -> None:
 def _config() -> dict[str, Any]:
     ctx = get_context()
     if ctx is None or not ctx.config_data:
-        raise RuntimeError("No distilaide config loaded. Provide a YAML file as the first argument.")
+        raise RuntimeError(
+            "No distilaide config loaded. Provide a YAML file as the first argument."
+        )
     return dict(ctx.config_data)
 
 
@@ -95,8 +99,12 @@ def denoise_cmd(denoiser: Denoiser) -> None:
     out_path = Path(str(config["output"])).expanduser()
 
     signal, meta = _load_signal(in_path)
-    logger.info(f"Loaded {in_path} shape={signal.shape} dtype={signal.dtype} backend={denoiser.backend}")
-    cleaned = denoiser.apply(signal, **{k: v for k, v in meta.items() if k == "sample_rate"})
+    logger.info(
+        f"Loaded {in_path} shape={signal.shape} dtype={signal.dtype} backend={denoiser.backend}"
+    )
+    cleaned = denoiser.apply(
+        signal, **{k: v for k, v in meta.items() if k == "sample_rate"}
+    )
     _save_signal(out_path, cleaned, meta)
     logger.info(f"Wrote denoised output to {out_path}")
 

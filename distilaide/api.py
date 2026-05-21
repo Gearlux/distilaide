@@ -38,7 +38,6 @@ from types import ModuleType
 from typing import Any, Optional
 
 import numpy as np
-
 from confluid import configurable
 from logflow import get_logger
 
@@ -70,8 +69,7 @@ def _build_registry() -> dict[str, str]:
         for method in backend.METHODS:
             if method in registry:
                 raise RuntimeError(
-                    f"Method {method!r} is registered by both "
-                    f"{registry[method]!r} and {module_path!r}"
+                    f"Method {method!r} is registered by both " f"{registry[method]!r} and {module_path!r}"
                 )
             registry[method] = module_path
     return registry
@@ -119,10 +117,7 @@ def denoise(signal: np.ndarray, method: str = "bm3d", **kwargs: Any) -> np.ndarr
         Denoised array with the same dtype as ``signal``.
     """
     if method not in _REGISTRY:
-        raise ValueError(
-            f"Unknown denoising method {method!r}. Known methods: "
-            f"{sorted(_REGISTRY.keys())}"
-        )
+        raise ValueError(f"Unknown denoising method {method!r}. Known methods: " f"{sorted(_REGISTRY.keys())}")
     module_path = _REGISTRY[method]
     backend = _load_backend(module_path)
     if not backend.is_available():
@@ -151,10 +146,7 @@ class Denoiser:
 
     def __init__(self, method: str = "bm3d", **kwargs: Any) -> None:
         if method not in _REGISTRY:
-            raise ValueError(
-                f"Unknown denoising method {method!r}. Known methods: "
-                f"{sorted(_REGISTRY.keys())}"
-            )
+            raise ValueError(f"Unknown denoising method {method!r}. Known methods: " f"{sorted(_REGISTRY.keys())}")
         self.method = method
         self.kwargs = kwargs
 

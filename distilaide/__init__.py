@@ -21,6 +21,7 @@ to import.
 __version__ = "0.1.0"
 
 from confluid import register
+
 from distilaide.api import Denoiser, available_methods, denoise, list_methods
 
 register(Denoiser)

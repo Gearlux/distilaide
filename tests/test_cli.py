@@ -24,7 +24,9 @@ class TestLoadSignal:
 
     def test_loads_wav(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Stub scipy.io.wavfile so we don't pull scipy in for unit tests.
-        fake_wavfile = types.SimpleNamespace(read=MagicMock(return_value=(8000, np.zeros(16, dtype=np.float32))))
+        fake_wavfile = types.SimpleNamespace(
+            read=MagicMock(return_value=(8000, np.zeros(16, dtype=np.float32)))
+        )
         fake_io = types.ModuleType("scipy.io")
         fake_io.wavfile = fake_wavfile  # type: ignore[attr-defined]
         fake_scipy = types.ModuleType("scipy")

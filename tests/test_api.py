@@ -43,7 +43,9 @@ class TestListMethods:
         methods = {row["method"] for row in rows}
         assert "bm3d" in methods and "dncnn" in methods and "dccrn" in methods
 
-    def test_only_available_filters_correctly(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_only_available_filters_correctly(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Force every backend to report unavailable.
         for module_path in api._BACKEND_MODULES:
             backend = api._load_backend(module_path)
@@ -88,7 +90,9 @@ class TestDenoiserConfigurable:
         assert Denoiser(method="dccrn").backend == "asteroid"
         assert Denoiser(method="noisereduce").backend == "noisereduce"
 
-    def test_apply_uses_construction_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_apply_uses_construction_kwargs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         backend = api._load_backend(api._REGISTRY["bm3d"])
         monkeypatch.setattr(backend, "is_available", lambda: True)
         spy = MagicMock(return_value=np.zeros((4, 4), dtype=np.float32))
@@ -111,7 +115,9 @@ class TestDenoiserConfigurable:
     def test_callable_protocol(self, monkeypatch: pytest.MonkeyPatch) -> None:
         backend = api._load_backend(api._REGISTRY["bm3d"])
         monkeypatch.setattr(backend, "is_available", lambda: True)
-        monkeypatch.setattr(backend, "denoise", MagicMock(return_value=np.zeros((4, 4))))
+        monkeypatch.setattr(
+            backend, "denoise", MagicMock(return_value=np.zeros((4, 4)))
+        )
         d = Denoiser(method="bm3d")
         out = d(np.zeros((4, 4)))
         assert out.shape == (4, 4)
@@ -127,7 +133,9 @@ class TestAvailableMethods:
             monkeypatch.setattr(backend, "is_available", lambda: False)
         assert available_methods() is False
 
-    def test_specific_method_polls_its_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_specific_method_polls_its_backend(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         backend = api._load_backend(api._REGISTRY["bm3d"])
         monkeypatch.setattr(backend, "is_available", lambda: True)
         assert available_methods("bm3d") is True

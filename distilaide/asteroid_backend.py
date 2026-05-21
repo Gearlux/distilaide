@@ -25,6 +25,7 @@ Available via ``pip install distilaide[asteroid]``.
 from typing import Any, Optional
 
 import numpy as np
+
 from logflow import get_logger
 
 logger = get_logger(__name__)
@@ -86,7 +87,9 @@ def denoise(
     from asteroid.models import BaseModel
 
     hub_id = _resolve_checkpoint(method, checkpoint)
-    logger.info(f"asteroid {method}: shape={signal.shape} checkpoint={hub_id} device={device}")
+    logger.info(
+        f"asteroid {method}: shape={signal.shape} checkpoint={hub_id} device={device}"
+    )
 
     model = BaseModel.from_pretrained(hub_id).to(device).eval()
     work = signal.astype(np.float32)

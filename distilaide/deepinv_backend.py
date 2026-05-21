@@ -22,6 +22,7 @@ Available via ``pip install distilaide[deepinv]``.
 from typing import Any, Optional
 
 import numpy as np
+
 from logflow import get_logger
 
 logger = get_logger(__name__)
@@ -116,7 +117,9 @@ def denoise(
 
     nchw, original_shape = _to_nchw(signal)
     tensor = torch.from_numpy(nchw.astype(np.float32)).to(device)
-    logger.info(f"deepinv {method}: shape={tuple(tensor.shape)} sigma={sigma} device={device}")
+    logger.info(
+        f"deepinv {method}: shape={tuple(tensor.shape)} sigma={sigma} device={device}"
+    )
 
     with torch.no_grad():
         if sigma is not None and method in {"drunet", "scunet"}:

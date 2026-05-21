@@ -43,16 +43,12 @@ class TestReshapeHelpers:
 
 
 class TestAvailability:
-    def test_unavailable_when_torch_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unavailable_when_torch_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, "torch", None)
         assert deepinv_backend.is_available() is False
 
 
-def _install_fake_torch_and_deepinv(
-    monkeypatch: pytest.MonkeyPatch, output: np.ndarray
-) -> tuple[MagicMock, MagicMock]:
+def _install_fake_torch_and_deepinv(monkeypatch: pytest.MonkeyPatch, output: np.ndarray) -> tuple[MagicMock, MagicMock]:
     """Install minimal fakes for ``torch`` and ``deepinv`` that round-trip a numpy array."""
     fake_tensor = MagicMock()
     fake_tensor.to.return_value = fake_tensor
@@ -92,9 +88,7 @@ def _install_fake_torch_and_deepinv(
 
 
 class TestDenoise:
-    def test_dispatch_to_dncnn(
-        self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray
-    ) -> None:
+    def test_dispatch_to_dncnn(self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray) -> None:
         model_class, model_instance = _install_fake_torch_and_deepinv(
             monkeypatch, gray_image[None, None, :, :].astype(np.float32)
         )
@@ -105,9 +99,7 @@ class TestDenoise:
         _, kwargs = model_class.call_args
         assert kwargs["pretrained"] == "download"
 
-    def test_sigma_forwarded_to_drunet(
-        self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray
-    ) -> None:
+    def test_sigma_forwarded_to_drunet(self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray) -> None:
         _, model_instance = _install_fake_torch_and_deepinv(
             monkeypatch, gray_image[None, None, :, :].astype(np.float32)
         )
@@ -115,9 +107,7 @@ class TestDenoise:
         _, kwargs = model_instance.call_args
         assert kwargs["sigma"] == 0.07
 
-    def test_sigma_ignored_for_blind_models(
-        self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray
-    ) -> None:
+    def test_sigma_ignored_for_blind_models(self, monkeypatch: pytest.MonkeyPatch, gray_image: np.ndarray) -> None:
         _, model_instance = _install_fake_torch_and_deepinv(
             monkeypatch, gray_image[None, None, :, :].astype(np.float32)
         )
@@ -129,9 +119,7 @@ class TestDenoise:
         with pytest.raises(ValueError, match="deepinv backend"):
             deepinv_backend._build_model("not-a-real-method")
 
-    def test_rgb_round_trips_through_dispatcher(
-        self, monkeypatch: pytest.MonkeyPatch, rgb_image: np.ndarray
-    ) -> None:
+    def test_rgb_round_trips_through_dispatcher(self, monkeypatch: pytest.MonkeyPatch, rgb_image: np.ndarray) -> None:
         nchw_out = np.transpose(rgb_image, (2, 0, 1))[None, ...].astype(np.float32)
         _install_fake_torch_and_deepinv(monkeypatch, nchw_out)
         out = deepinv_backend.denoise(rgb_image, method="swinir")

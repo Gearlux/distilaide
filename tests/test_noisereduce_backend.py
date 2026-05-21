@@ -12,9 +12,7 @@ import pytest
 from distilaide import noisereduce_backend
 
 
-def _install_fake_nr(
-    monkeypatch: pytest.MonkeyPatch, return_value: np.ndarray
-) -> MagicMock:
+def _install_fake_nr(monkeypatch: pytest.MonkeyPatch, return_value: np.ndarray) -> MagicMock:
     mock_callable = MagicMock(return_value=return_value)
     fake_module = types.ModuleType("noisereduce")
     fake_module.reduce_noise = mock_callable  # type: ignore[attr-defined]
@@ -33,9 +31,7 @@ class TestNoiseReduceAvailability:
 
 
 class TestNoiseReduceDenoise:
-    def test_mono_signal_passes_sample_rate(
-        self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray
-    ) -> None:
+    def test_mono_signal_passes_sample_rate(self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray) -> None:
         mock = _install_fake_nr(monkeypatch, mono_audio.copy())
         out = noisereduce_backend.denoise(mono_audio, sample_rate=16000)
         assert out.shape == mono_audio.shape
@@ -45,18 +41,14 @@ class TestNoiseReduceDenoise:
         assert kwargs["stationary"] is True
         assert kwargs["y_noise"] is None
 
-    def test_noise_clip_forwarded(
-        self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray
-    ) -> None:
+    def test_noise_clip_forwarded(self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray) -> None:
         mock = _install_fake_nr(monkeypatch, mono_audio.copy())
         clip = mono_audio[:1000]
         noisereduce_backend.denoise(mono_audio, sample_rate=16000, noise_clip=clip)
         _, kwargs = mock.call_args
         np.testing.assert_array_equal(kwargs["y_noise"], clip.astype(np.float32))
 
-    def test_extra_kwargs_forwarded(
-        self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray
-    ) -> None:
+    def test_extra_kwargs_forwarded(self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray) -> None:
         mock = _install_fake_nr(monkeypatch, mono_audio.copy())
         noisereduce_backend.denoise(mono_audio, sample_rate=16000, prop_decrease=0.7)
         _, kwargs = mock.call_args
@@ -66,11 +58,7 @@ class TestNoiseReduceDenoise:
         with pytest.raises(ValueError, match="noisereduce backend"):
             noisereduce_backend.denoise(mono_audio, method="bm3d")
 
-    def test_alias_method_accepted(
-        self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray
-    ) -> None:
+    def test_alias_method_accepted(self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray) -> None:
         _install_fake_nr(monkeypatch, mono_audio.copy())
-        out = noisereduce_backend.denoise(
-            mono_audio, method="spectral-gate", sample_rate=16000
-        )
+        out = noisereduce_backend.denoise(mono_audio, method="spectral-gate", sample_rate=16000)
         assert out.shape == mono_audio.shape

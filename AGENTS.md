@@ -5,4 +5,4 @@
 - **Single Dispatcher Surface:** `denoise(signal, method=...)` is the single entry point; the `Denoiser` Confluid-`@configurable` wraps it. New methods register into the per-backend method table; never add parallel dispatchers.
 - **Optional Extras Discipline:** Heavy deps (`deepinv`, `asteroid`, classical `bm3d`/`noisereduce`) live behind `[classical]` / `[deepinv]` / `[asteroid]` / `[all]` extras. Core install stays minimal — top-level import MUST succeed without any extra.
 - **CLI via Liquifai:** Verbs `list-methods` and `denoise <yaml>` follow workspace Liquifai conventions. `.npy` / `.wav` round-trip is the canonical IO; don't add ad-hoc format flags.
-- **Logflow / Confluid First:** Diagnostic output goes through `logflow.get_logger`, not `print`. All knobs (method, params, IO paths) MUST be reachable from a single Confluid YAML.
+- **Loggair / Confluid First:** Diagnostic output goes through `loggair.get_logger`, not `print`. All knobs (method, params, IO paths) MUST be reachable from a single Confluid YAML.

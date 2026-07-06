@@ -1,6 +1,6 @@
 # Distilaide
 
-(logflow / confluid / liquifai) adapter over four denoising libraries — AI and classical — exposed through one `denoise()` dispatcher and one Confluid-`@configurable` `Denoiser`.
+(loggair / confluid / liquifai) adapter over four denoising libraries — AI and classical — exposed through one `denoise()` dispatcher and one Confluid-`@configurable` `Denoiser`.
 
 | Backend | Domain | Methods | Extra |
 |---|---|---|---|
@@ -9,7 +9,7 @@
 | [`deepinv`](https://deepinv.github.io/) | Pretrained CNN/Transformer image denoisers | `dncnn`, `drunet`, `swinir`, `scunet`, `restormer` | `[deepinv]` |
 | [`asteroid`](https://asteroid-team.github.io/) | Pretrained speech enhancement / source separation | `dccrn`, `dcunet`, `convtasnet`, `demucs` | `[asteroid]` |
 
-Distilaide is **not** a denoiser. It's a thin glue layer (~250 lines of code) over four upstream packages that already do the work, with logflow logging, Confluid YAML config, and the same liquifai CLI conventions as the rest of the workspace.
+Distilaide is **not** a denoiser. It's a thin glue layer (~250 lines of code) over four upstream packages that already do the work, with loggair logging, Confluid YAML config, and the same liquifai CLI conventions as the rest of the workspace.
 
 ## The denoising landscape
 
@@ -104,7 +104,7 @@ pip install -e ".[dev,classical]"     # core + classical backends + dev tools
    │ output:      │            │                └──────────────────────┘
    └──────────────┘            │
             ▲                  ▼
-       liquifai CLI       logflow logger
+       liquifai CLI       loggair logger
 ```
 
 Each backend lives in a single `<name>_backend.py` exposing three things:
@@ -195,7 +195,7 @@ What distilaide adds:
 
 - One Python entry point (`denoise(signal, method=...)`) instead of four library APIs.
 - One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside DataFlux pipelines, marainer training loops, or any other config.
-- logflow integration for unified logging across the workspace.
+- loggair integration for unified logging across the workspace.
 - liquifai CLI matching the rest of the .
 - Lazy imports so the package itself works with any subset of `[classical]` / `[deepinv]` / `[asteroid]` installed.
 
@@ -207,7 +207,7 @@ If you only need one backend, use it directly. If you want to write code that sw
 |---|---|---|
 | `confluid` | YAML config + `@configurable` | yes |
 | `liquifai` | CLI framework | yes |
-| `logflow` | Structured logging | yes |
+| `loggair` | Structured logging | yes |
 | `numpy` | Array protocol | yes |
 | `bm3d` | BM3D denoiser | optional (`[classical]`) |
 | `noisereduce` | Spectral gating | optional (`[classical]`) |

@@ -11,7 +11,7 @@ Available via ``pip install distilaide[classical]``.
 from typing import Any, Optional
 
 import numpy as np
-from logflow import get_logger
+from loggair import get_logger
 
 logger = get_logger(__name__)
 

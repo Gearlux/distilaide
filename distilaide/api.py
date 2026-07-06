@@ -39,7 +39,7 @@ from typing import Any, Optional
 
 import numpy as np
 from confluid import configurable
-from logflow import get_logger
+from loggair import get_logger
 
 logger = get_logger(__name__)
 

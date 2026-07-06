@@ -24,7 +24,7 @@ from typing import Any, Tuple
 
 import numpy as np
 from liquifai import LiquifyApp, get_context
-from logflow import get_logger
+from loggair import get_logger
 
 from distilaide.api import Denoiser, list_methods
 

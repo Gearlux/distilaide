@@ -42,6 +42,13 @@ all = [
 [project.scripts]
 distilaide = "distilaide.cli:main"
 
+# Liquifai app registration: lets `liquifai-install-completions` discover this
+# CLI via an instant entry-point metadata read instead of executing the binary
+# (subprocess probe, 15 s timeout each). Name = the app/binary name; value =
+# the LiquifyApp instance. Entry-point changes need an editable reinstall.
+[project.entry-points."liquifai.apps"]
+distilaide = "distilaide.cli:app"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["distilaide*"]

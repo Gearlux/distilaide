@@ -194,7 +194,7 @@ The denoising landscape is well-served by mature upstream packages — `deepinv`
 What distilaide adds:
 
 - One Python entry point (`denoise(signal, method=...)`) instead of four library APIs.
-- One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside DataFlux pipelines, marainer training loops, or any other config.
+- One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside SampleFlux pipelines, marainer training loops, or any other config.
 - loggair integration for unified logging across the workspace.
 - liquifai CLI matching the rest of the .
 - Lazy imports so the package itself works with any subset of `[classical]` / `[deepinv]` / `[asteroid]` installed.

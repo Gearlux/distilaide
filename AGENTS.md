@@ -1,5 +1,9 @@
 # Distilaide Mandates
 
+## Current state
+
+Feature-complete: 12 methods registered across the four backends — `deepinv` (DnCNN/DRUNet/SwinIR/SCUNet/Restormer), `asteroid` (DCCRN/DCUNet/ConvTasNet/Demucs), `bm3d`, `noisereduce`.
+
 - **Adapter, Not Denoiser:** Distilaide is a thin (~250 LOC) glue layer over upstream denoising libraries — `bm3d`, `noisereduce`, `deepinv`, `asteroid`. Never reimplement a denoising algorithm; wrap the upstream call. If a method doesn't exist upstream, file an issue rather than rolling your own.
 - **One Backend Module Per Library:** Each upstream package gets exactly one `<name>_backend.py` with lazy imports so missing optional extras never break top-level import. Don't merge backends; don't split a single backend across files.
 - **Single Dispatcher Surface:** `denoise(signal, method=...)` is the single entry point; the `Denoiser` Confluid-`@configurable` wraps it. New methods register into the per-backend method table; never add parallel dispatchers.

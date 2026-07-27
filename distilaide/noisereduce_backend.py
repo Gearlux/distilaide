@@ -2,7 +2,7 @@
 
 `noisereduce <https://pypi.org/project/noisereduce/>`__ is a tiny, pure-Python
 spectral-gating denoiser that excels on stationary noise (HVAC hum, broadband
-hiss). It accepts a noise sample for stationary mode, or estimates the noise
+hiss). It accepts a noise record for stationary mode, or estimates the noise
 profile itself when none is provided.
 
 Available via ``pip install distilaide[classical]``.
@@ -39,7 +39,7 @@ def denoise(
     """Spectral-gate denoise of a 1D (mono) or 2D (channels-first) signal.
 
     Args:
-        signal: 1D (samples,) or 2D (channels, samples) float array.
+        signal: 1D (records,) or 2D (channels, records) float array.
         sample_rate: Sampling rate in Hz. Required by ``noisereduce``'s STFT.
         noise_clip: Optional noise-only segment (same shape rules as
             ``signal``); when provided, used to estimate the noise profile

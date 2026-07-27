@@ -80,7 +80,7 @@ class TestAvailability:
 
 class TestDenoise:
     def test_mono_dccrn_round_trip(self, monkeypatch: pytest.MonkeyPatch, mono_audio: np.ndarray) -> None:
-        # asteroid models return (batch, n_src, samples) — for SE n_src==1.
+        # asteroid models return (batch, n_src, records) — for SE n_src==1.
         out = mono_audio[None, None, :].astype(np.float32)
         base_model, _ = _install_fake_torch_and_asteroid(monkeypatch, out)
         result = asteroid_backend.denoise(mono_audio, method="dccrn")

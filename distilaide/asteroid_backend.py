@@ -15,7 +15,7 @@ Method alias        Hugging Face checkpoint
 ``demucs``          ``mhubert/Demucs_speech_enhancement_16k`` (speech enhancement)
 ==================  =====================================================================
 
-Inputs are 1D (samples,) or 2D (channels, samples) ``float32`` arrays at the
+Inputs are 1D (records,) or 2D (channels, records) ``float32`` arrays at the
 model's native sample rate (typically 16 kHz). Resampling is the caller's
 responsibility — keep the package thin.
 
@@ -71,7 +71,7 @@ def denoise(
     """Run an asteroid pretrained model on ``signal``.
 
     Args:
-        signal: 1D (samples,) or 2D (channels, samples) ``float32`` array at
+        signal: 1D (records,) or 2D (channels, records) ``float32`` array at
             the model's native sample rate.
         method: One of :data:`METHODS`, or an arbitrary string when
             ``checkpoint`` is supplied.
@@ -102,7 +102,7 @@ def denoise(
         out_t = model(tensor)
 
     out = out_t.detach().cpu().numpy()
-    # Separation models return (batch, n_src, samples); pick the first source.
+    # Separation models return (batch, n_src, records); pick the first source.
     if out.ndim == 3 and out.shape[1] > 1 and signal.ndim == 1:
         out = out[:, 0:1, :]
 

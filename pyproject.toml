@@ -1,18 +1,132 @@
 [project]
 name = "distilaide"
-version = "0.1.0"
-description = "(loggair / confluid / liquifai) adapter over deepinv, asteroid, BM3D, and noisereduce for AI and classical denoising."
+version = "0.2.0"
+description = "Image restoration across training backends, driven by one config (deepinv models)."
 authors = [{name = "Taidal"}]
 license = {text = "MIT"}
+# The CORE is backend-free: `pip install distilaide` gives the CLI and the config surface only, so
+# a machine that has not chosen a training framework never installs one. Every ML framework lives
+# in the extra of the backend that needs it (see `[project.optional-dependencies]`), and every
+# backend-owned name in `distilaide/__init__.py` resolves lazily to match.
 dependencies = [
+    "confluid>=0.3.0",
+    "recordstream>=0.1.0",
     "liquifai>=0.1.0",
     "loggair>=0.1.0",
-    "confluid>=0.1.0",
-    "numpy>=1.26",
+    # matrainer is the TRACKING library (and the metric-slot rule + artifact writers). Its own
+    # core install is light — no torch — so it belongs here rather than in a backend extra.
+    "matrainer>=0.1.0",
 ]
 requires-python = ">=3.12"
 
 [project.optional-dependencies]
+# One extra per training backend. `aisland framework set torch lightning` installs the ones the
+# workspace has selected across every project that declares them (see [tool.aisland] below).
+#
+# `torch` is the BASE of the three torch-backed backends: it carries the model zoo, the losses,
+# the metrics and the preprocessing that `lightning` and `fastai` also need, so each of those
+# declares `distilaide[torch]` rather than restating the list. That is not just economy — it is
+# what makes "the config does not change between backends" true of the INSTALL as well.
+torch = [
+    "matrainer[torch]>=0.1.0",
+    "recordstream[torch]>=0.1.0",
+    "torch",
+    "torchvision",
+    # The image-quality metrics a restoration run is scored on (`PeakSignalNoiseRatio` /
+    # `StructuralSimilarityIndexMeasure` — see `distilaide/torch_restoration.py`).
+    "torchmetrics",
+    # `deepinv.models` — the restoration zoo `DeepInvModel` wraps: the learned denoisers
+    # (DnCNN / DRUNet / SCUNet / SwinIR / Restormer / FFDNet / UNet) AND the classical baselines
+    # (TV / wavelet / median / bilateral), all of them `torch.nn.Module`s.
+    "deepinv>=0.4",
+    # The degradation the example config applies (`albumentations.GaussNoise`) and the resize
+    # every image pipeline needs.
+    "albumentations>=2.0",
+]
+lightning = [
+    "distilaide[torch]",
+    "matrainer[lightning]>=0.1.0",
+    "pytorch-lightning",
+]
+# TWO upper bounds, both upstream breaks and both removable when upstream fixes them — do NOT
+# delete them as "hardcoded versions". `fastcore<2`: fastai's own `Optimizer.set_hypers` still
+# calls `L.starmap`, which fastcore 2.x removed, so `fit_one_cycle` dies at the first
+# `create_opt()`; fastai declares only `fastcore>=1.8.0`, so a fresh resolve picks 2.x and EVERY
+# fastai run fails. `fastprogress<1.1`: 1.1 added a `python-fasthtml` dependency — a progress bar
+# pulling in a web framework — which drags `starlette` past what other workspace packages pin.
+fastai = [
+    "distilaide[torch]",
+    "fastai>=2.7",
+    "fastcore<2",
+    "fastprogress<1.1",
+]
+# BM3D is an OPTIONAL sub-extra of the zoo rather than part of `[torch]`: `deepinv.models.BM3D`
+# imports the `bm3d` package lazily, so every other architecture works without it, and the wheel
+# is a heavy native build that a run wiring `arch: dncnn` never touches. It is the one classical
+# baseline with a dependency the others do not have (TV / wavelet / median / bilateral are pure
+# torch or ride deepinv's own `[denoisers]` stack).
+bm3d = [
+    "distilaide[torch]",
+    "bm3d>=4.0.0",
+]
+# Keras 3 is an API, not an engine — it needs ONE compute backend underneath (torch / TF / jax),
+# and `recordstream.keras` (which `distilaide/_keras.py` imports through) selects whichever is
+# installed. So each Keras-family extra names its OWN engine; a `tensorflow = ["distilaide[keras]",
+# …]` chain would drag torch into a TensorFlow install, the opposite of what selecting an extra is
+# for. Neither names `distilaide[torch]`: the deepinv zoo and torchmetrics belong to the torch
+# backends, and a Keras config wires `KerasDnCNN` + `keras.losses` instead.
+keras = [
+    "keras>=3.0",
+    "torch",                # the engine `distilaide[keras]` runs Keras on
+    # The PyDataset batching adapter (`recordstream.keras.RecordSequence`) + the KERAS_BACKEND
+    # import ordering this backend depends on.
+    "recordstream[keras]>=0.1.0",
+    # Tracking for a Keras run. matrainer[keras], NOT matrainer[tensorflow]: the callback needs
+    # the Keras API, not the TensorFlow engine.
+    "matrainer[keras]>=0.1.0",
+    "albumentations>=2.0",
+]
+tensorflow = [
+    "keras>=3.0",           # Keras 3 IS tf.keras in TF >= 2.16
+    "tensorflow>=2.16",     # ...this extra's engine
+    "recordstream[keras]>=0.1.0",
+    "matrainer[keras]>=0.1.0",
+    "albumentations>=2.0",
+]
+# JAX and MLX bring NO zoo to wrap — deepinv is torch-only and nothing publishes JAX or MLX
+# denoising weights — so each of these installs only its framework and trains `distilaide/dncnn/`'s
+# shared spec. Neither names `distilaide[torch]`: their losses are their own framework's plain
+# functions, and the metrics come from matrainer's framework-free accumulator.
+jax = [
+    "jax>=0.4",
+    "flax>=0.8",            # NNX is the current Flax module API
+    "optax>=0.2",           # the optimizers and losses; JAX itself ships neither
+    # The PyDataset batching adapter (`recordstream.keras.RecordSequence`), reused verbatim —
+    # batching a record stream is not a JAX problem.
+    "recordstream[keras]>=0.1.0",
+    "matrainer>=0.1.0",
+    "albumentations>=2.0",
+]
+mlx = [
+    # Apple silicon only — the marker keeps `pip install distilaide[mlx]` from failing outright
+    # elsewhere, so the extra stays installable (and empty) on any machine.
+    "mlx>=0.15; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "recordstream[keras]>=0.1.0",
+    "matrainer>=0.1.0",
+    "albumentations>=2.0",
+]
+# `transformers` runs its models on torch here, so this extra names torch's stack — but NOT
+# `distilaide[torch]`: a Swin2SR run has no use for the deepinv zoo. Its metrics come from
+# matrainer's framework-free accumulator, because `Trainer`'s `compute_metrics` hook receives
+# numpy arrays rather than tensors.
+huggingface = [
+    "transformers>=4.40",
+    "accelerate>=0.30",     # what `Trainer` uses for device/distribution placement
+    "torch",
+    "recordstream[torch]>=0.1.0",
+    "matrainer[torch]>=0.1.0",
+    "albumentations>=2.0",
+]
 dev = [
     "black>=24.0.0,<25.0.0",
     "isort>=5.13.0,<6.0.0",
@@ -21,23 +135,13 @@ dev = [
     "pytest>=7.0.0,<9.0.0",
     "pytest-cov>=4.0.0,<7.0.0",
 ]
-deepinv = [
-    "deepinv>=0.2.0",
-    "torch>=2.1",
-]
-asteroid = [
-    "asteroid>=0.7.0",
-    "torch>=2.1",
-    "torchaudio>=2.1",
-]
-classical = [
-    "bm3d>=4.0.0",
-    "noisereduce>=3.0.0",
-    "scipy>=1.11",
-]
-all = [
-    "distilaide[deepinv,asteroid,classical]",
-]
+
+# Which training backends this project OFFERS. `aisland framework list` reads it; what actually
+# installs is the workspace-wide selection in the committed `config.toml`, so a machine that has
+# not selected `lightning` builds distilaide without torch.
+[tool.aisland]
+frameworks = ["torch", "lightning", "fastai", "keras", "tensorflow", "jax", "mlx", "huggingface"]
+trackers = ["mlflow", "tensorboard"]
 
 [project.scripts]
 distilaide = "distilaide.cli:main"
@@ -48,6 +152,41 @@ distilaide = "distilaide.cli:main"
 # the LiquifyApp instance. Entry-point changes need an editable reinstall.
 [project.entry-points."liquifai.apps"]
 distilaide = "distilaide.cli:app"
+
+# ONE entry point per REGISTERING module — never the package. `import distilaide` registers
+# nothing (every backend-owned name is lazy, so a machine without torch never imports it), so
+# discovery runs entirely off this table: a scanner imports each module named here, and the import
+# is what executes the `@configurable` decorators. A module missing from this list registers
+# NOTHING, and the failure is silent in every way a developer would notice — a dotted path in YAML
+# still imports the module itself, and the CLI imports its own backend, so only navigaitor's
+# pickers, the form-specs and the StreamStudio palette go blind, by offering FEWER options.
+#
+# Naming: `distilaide-<backend>` for a runnable, `distilaide-<backend>-model` for a zoo wrapper,
+# `distilaide-<framework>-restoration` for a loss/metric set. After changing this table, reinstall
+# the editable (`uv pip install -e ./distilaide --no-deps`) for the metadata to take effect.
+# `tests/test_entry_points.py` DERIVES the expectation from the tree, in both directions.
+[project.entry-points."confluid.configurables"]
+distilaide-lightning = "distilaide.lightning_restorer"
+distilaide-torch = "distilaide.torch_restorer"
+distilaide-fastai = "distilaide.fastai_restorer"
+distilaide-keras = "distilaide.keras_restorer"
+distilaide-tensorflow = "distilaide.tensorflow_restorer"
+# The jax and mlx runnables register NO losses — optax and mlx.nn ship plain FUNCTIONS, so those
+# are resolved by NAME and there is nothing for the registry to tag.
+distilaide-jax = "distilaide.jax_restorer"
+distilaide-mlx = "distilaide.mlx_restorer"
+distilaide-huggingface = "distilaide.huggingface_restorer"
+distilaide-huggingface-model = "distilaide.huggingface_model"
+distilaide-deepinv-model = "distilaide.deepinv_model"
+distilaide-torch-restoration = "distilaide.torch_restoration"
+distilaide-keras-restoration = "distilaide.keras_restoration"
+# The shared DnCNN spec's implementations — one entry point each, like every other registering
+# module. `spec.py` itself registers nothing (it exports constants and a function), so it has none.
+distilaide-torch-dncnn = "distilaide.dncnn.torch_dncnn"
+distilaide-keras-dncnn = "distilaide.dncnn.keras_dncnn"
+distilaide-tensorflow-dncnn = "distilaide.dncnn.tensorflow_dncnn"
+distilaide-flax-dncnn = "distilaide.dncnn.flax_dncnn"
+distilaide-mlx-dncnn = "distilaide.dncnn.mlx_dncnn"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -93,14 +232,12 @@ explicit_package_bases = true
 [[tool.mypy.overrides]]
 module = [
     "torch.*",
-    "torchaudio.*",
+    "torchvision.*",
+    "torchmetrics.*",
+    "pytorch_lightning.*",
     "deepinv.*",
-    "asteroid.*",
-    "bm3d.*",
-    "noisereduce.*",
-    "scipy.*",
-    "liquifai.*",
-    "confluid.*",
-    "loggair.*",
+    "albumentations.*",
+    "fastai.*",
+    "fastcore.*",
 ]
 ignore_missing_imports = true

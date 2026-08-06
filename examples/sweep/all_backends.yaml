@@ -1,0 +1,247 @@
+# The sweep overlay: EVERY backend live, ONE metric vocabulary, EVERY tracker selectable.
+#
+#   ../../examples/sweep/run_sweep.sh                   # the driver — see that script
+#   distilaide train examples/sweep/all_backends.yaml --framework jax --model dncnn --tracker mlflow
+#
+# ---------------------------------------------------------------------------
+# Why this is an OVERLAY and not a copy
+# ---------------------------------------------------------------------------
+# `include:` deep-merges the neighbouring example under this file, which then overrides only what a
+# sweep needs. Everything that makes the demo a demo — the dataset, the DEGRADATION (which is the
+# task), the ordering rule that keeps the pair paired, the channels-last chains, the batch/epoch
+# knobs, every framework block, the argument for why each framework-specific key is a top-level
+# sibling — is READ from there, so the two cannot drift.
+#
+# Two things this file adds, and each is the reason it exists rather than living in the example:
+#
+#  1. A TRACKER DIMENSION. `--tracker mlflow` picks where the results go, the same way `--framework`
+#     picks the engine. The names come from the top-level `experiment_name:` / `run_name:` through
+#     `!ref:`, so the ONE pair the driver sets reaches the run AND the tracker.
+#  2. ONE VOCABULARY FOR THE SCORE. Eight engines default to different metric pairs, and a table
+#     whose columns are `psnr` / `ssim` / `mse` half-filled is a list of runs rather than a
+#     comparison. See the two sections below.
+#
+# What it does NOT add is a `!scope:model=dncnn` block — the EXAMPLE carries that one, because
+# making the shared spec reachable is worth having on a default checkout and not only under a sweep.
+# Nor does it nest per-engine `dncnn:` blocks: every non-torch block there ALREADY wires its own
+# implementation unconditionally and is spliced AFTER the top-level one, so `--framework mlx --model
+# dncnn` reaches `MlxDnCNN` with nothing added (verified, and pinned by
+# `tests/test_sweep_config.py::test_each_non_torch_engine_gets_its_own_implementation_of_the_spec`
+# so a reordering cannot silently hand one of them the torch model).
+#
+# ---------------------------------------------------------------------------
+# What the matrix looks like
+# ---------------------------------------------------------------------------
+#   backend      zoo model                            dncnn (--model dncnn)
+#   lightning    DeepInvModel dncnn (668K)            TorchDnCNN (57,635)
+#   torch        DeepInvModel dncnn (668K)            TorchDnCNN
+#   fastai       DeepInvModel dncnn (668K)            TorchDnCNN
+#   keras        —                                    KerasDnCNN
+#   tensorflow   —                                    TensorFlowDnCNN
+#   jax          —                                    FlaxDnCNN
+#   mlx          —                                    MlxDnCNN
+#   huggingface  Swin2SR (from scratch)               —
+#
+# ELEVEN cells, and both kinds of gap are structural rather than missing work.
+#
+# **No non-torch zoo exists to wrap.** `deepinv` is torch-only, `keras.applications` ships
+# classification backbones and no restoration head, transformers dropped Flax in v5, and there is no
+# MLX restoration zoo — which is exactly the observation `distilaide/dncnn/spec.py` exists to
+# answer, since four zoo models would compare four networks instead of four frameworks.
+#
+# **And `huggingface` has no dncnn — but for a NARROWER reason than the per-pixel project's, and
+# the difference is worth knowing.** There, the gap is that a `transformers.Trainer` drives models
+# which compute their own loss from `labels=`; here that is not the obstacle at all, because this
+# backend already ships a `Trainer` subclass that pops the target and applies `loss_fn` ITSELF (see
+# the example's huggingface block). What remains is purely the CALLING CONVENTION: `Trainer`'s
+# EVALUATION path calls `model(**inputs)` directly, so a model must accept `pixel_values=` and
+# `labels=` as KEYWORDS. `TorchDnCNN.forward(images)` does not, and measured it fails with
+# *"TorchDnCNN.forward() got an unexpected keyword argument 'pixel_values'"* — it TRAINS fine and
+# dies on the first eval. Teaching the shared spec transformers' keyword names would put one
+# framework's convention inside the class whose entire job is to be the same network in five of
+# them, so the cell stays out. `HuggingFaceRestorationModel` takes both spellings for exactly this
+# reason and is what fills the huggingface row.
+#
+# One ROW is therefore not comparable with the others on score, and that is honest rather than a
+# flaw: Swin2SR is a transformer with a `Trainer`'s schedule against DnCNNs of 668K and 57K
+# parameters. Compare the five `*DnCNN` rows with each other — that is what they are for — and read
+# the zoo rows as what a bigger network buys.
+
+include: ../train_dncnn_denoising.yaml
+
+# `num_workers` is deliberately NOT set to 0. `import fastai` switches the multiprocessing start
+# method to `fork` PROCESS-WIDE, and a forked DataLoader worker is where this project's guard lives
+# (`ensure_materialized`, plus recordstream's own `cv2.setNumThreads(0)`) — so a sweep that ran
+# single-process would stop exercising the one path whose failure is a SIGSEGV with no traceback.
+# The example's `num_workers: 4` stands, and the cost is a few seconds of worker startup per run.
+
+# ===========================================================================
+# Where the results go — one dimension, one block per tracker
+# ===========================================================================
+# `!ref:` rather than a literal: the driver sets `experiment_name` / `run_name` ONCE at the top level
+# and both the run and its tracker read the same value. A literal here would drift from whatever the
+# run is actually called, which is the one thing a sweep must not do.
+#
+# With no `--tracker` at all nothing is wired (the example's `trackers:` block is commented out), so
+# this file changes nothing about running the example by hand.
+
+mlflow: !scope:tracker=mlflow
+  trackers:
+    - !class:matrainer.MlflowTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      # The workspace's own server (`aisland mlflow start`). Unset it and MLflow falls back to the
+      # ambient MLFLOW_TRACKING_URI, then to a local ./mlruns directory.
+      tracking_uri: http://127.0.0.1:5005
+      # Off for a sweep: each run would start a sampler thread and a subprocess monitor, and eleven
+      # of those in a row measure the sweep more than the model.
+      log_system_metrics: false
+
+tensorboard: !scope:tracker=tensorboard
+  trackers:
+    - !class:matrainer.TensorBoardTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      save_dir: ./sweep_logs/tensorboard
+
+csv: !scope:tracker=csv
+  trackers:
+    - !class:matrainer.CsvTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      save_dir: ./sweep_logs/csv
+
+aim: !scope:tracker=aim
+  trackers:
+    - !class:matrainer.AimTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      save_dir: ./sweep_logs/aim
+
+clearml: !scope:tracker=clearml
+  trackers:
+    - !class:matrainer.ClearMLTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      # No server and no credentials — the runs land on disk for `clearml-data`/the UI to import.
+      offline: true
+
+wandb: !scope:tracker=wandb
+  trackers:
+    - !class:matrainer.WandbTracker
+      experiment_name: !ref:experiment_name
+      run_name: !ref:run_name
+      save_dir: ./sweep_logs/wandb
+
+# ===========================================================================
+# The SAME TWO QUANTITIES on every row
+# ===========================================================================
+# The torch backends default to PSNR + SSIM, while keras / tensorflow / jax / mlx / huggingface
+# default to PSNR + MSE — one shared column and two half-empty ones. Restating the pair here as
+# torchmetrics templates lines the second column up.
+#
+# **PSNR is the column this table exists for and MSE is the control.** SSIM is deliberately NOT in
+# the shared set: `keras.ops` has no SSIM and the only implementations are engine-SPECIFIC, so it
+# can never be more than a 2-of-11 column. Wire it back when you want to look at the torch backends;
+# leave it out when you want to compare backends.
+#
+# It is safe as a TOP-LEVEL key, and the reason is worth knowing because it is what saves the
+# example's per-engine blocks too: confluid gates broadcast on the RECEIVING slot's annotation, and
+# every non-torch restorer declares `metrics: Optional[List[...]]` — a MAPPING does not reach a
+# list-annotated slot, so this key is invisible to all SIX engines that cannot consume a torchmetrics
+# template. Only `LightningRestorer` / `TorchRestorer`, whose `MetricsSpec` alias admits a mapping,
+# receive it. (Pinned by
+# `tests/test_sweep_config.py::test_a_metric_set_never_reaches_an_engine_that_cannot_consume_it`.)
+#
+# Every metric stays a `!lazy:` TEMPLATE rather than an instance, because that is what lets the
+# runnable inject `data_range` into it — the one number every full-reference image metric is defined
+# relative to, and silent when wrong (20.46 dB against 68.59 dB on the same tensors).
+metrics:
+  psnr: !lazy:torchmetrics.image.PeakSignalNoiseRatio
+  mse: !lazy:torchmetrics.MeanSquaredError
+
+# MS-SSIM is the example's validation-only extra, and a sweep drops it: no non-torch engine can
+# compute it, so it is a 2-of-11 column, and it is the expensive metric in the file (an image pyramid
+# per pair). `null` restores the SENTINEL meaning "not chosen", which is not the same as an empty
+# list — the four non-torch blocks in the example already say exactly this for the same reason.
+val_metrics: null
+
+# fastai is the ONE block a metric change has to reach individually, because its metrics are NAMES
+# resolved against `fastai.metrics` and the mapping above cannot reach it (see the annotation gate).
+#
+# **It is a CONSTRUCTOR kwarg, not a sibling key, and that is a second composition trap on top of
+# the replace-not-merge one below.** `include:` DEEP-MERGES, so a key the included file already has
+# keeps its ORIGINAL POSITION in the merged document while a key only this file introduces is
+# appended at the end — and a scope block is spliced into its parent where its key sits. So the
+# top-level `metrics:` above, being new here, lands AFTER this block however far up the file the
+# block is written, and as a sibling key `metrics:` here would be silently overwritten by it. An
+# explicit constructor kwarg is immune — it beats a broadcast one whatever the document order.
+#
+# `psnr` is distilaide's OWN name here, not one of fastai's: `fastai.metrics` publishes `mse` / `mae`
+# / `rmse` / `msle` and nothing scale-aware, so the quantity the other seven engines report was
+# unreachable by name and left this row's headline cell blank. `_as_metric` resolves it to a small
+# ACCUMULATING `Metric` (see `PeakSignalNoiseRatio` in `fastai_restorer.py`) holding matrainer's
+# shared squared-error accumulator — which is also why it is not a per-batch average: PSNR is a
+# logarithm of a mean, so averaging per batch is wrong in a way that moves with the batch size.
+fastai: !scope:framework=fastai
+  runnable: !class:distilaide.FastaiRestorer
+    one_cycle: true
+    learning_rate: 0.001
+    metrics:
+      - psnr
+      - mse
+
+# tensorflow — the example's block, plus the SavedModel export a sweep can afford to keep, under
+# `sweep_logs/` with everything else this run writes. Restated in full and not merely extended:
+# `include:` deep-merges MAPPINGS, and a `!scope:` parses to a `ScopeBlock` rather than a dict, so an
+# overlay block sharing a key REPLACES the included one wholesale. A block here holding only
+# `export_dir` would have dropped the runnable, the model AND the channels-last preprocess chain, and
+# `--framework tensorflow` would have trained a `LightningRestorer` over CHW tensors under the right
+# name with nothing raising.
+tensorflow: !scope:framework=tensorflow
+  runnable: !class:distilaide.TensorFlowRestorer
+    jit_compile: false
+    prefetch: true
+    export_dir: ./sweep_logs/exported/dncnn_denoising
+  model: !lazy:distilaide.TensorFlowDnCNN
+    input_shape: [192, 192, 3]
+  preprocess:
+    - !class:recordstream.ops.image.ConvertToImage
+      field: image
+      width: 192
+      height: 192
+      colormap: gray
+    - !class:albumentations.Normalize
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+      max_pixel_value: 255.0
+    - !class:recordstream.ops.structure.CopyField
+      src: image
+      dst: target
+    # Seeded, like the example's chains — a bare transform takes no `seed` (albumentations warns
+    # that it is not a valid argument); only a `Compose` carries one.
+    - !class:albumentations.Compose
+      seed: 0
+      transforms:
+        - !class:albumentations.GaussNoise
+          std_range: [0.1, 0.1]
+          mean_range: [0.0, 0.0]
+          per_channel: true
+          p: 1.0
+  val_metrics: null
+
+# huggingface — the example's block with `output_dir` pointed at the sweep's own tree, so eleven runs
+# do not scatter `Trainer` checkpoints beside the metrics sidecars. Restated in full for the
+# replace-not-merge reason above. Its metrics are a list of NAMES (`Optional[List[str]]`), so like
+# fastai's they are a constructor kwarg rather than a sibling key.
+huggingface: !scope:framework=huggingface
+  runnable: !class:distilaide.HuggingFaceRestorer
+    learning_rate: 0.0002
+    metrics: [psnr, mse]
+    output_dir: ./sweep_logs/hf_runs
+  model: !lazy:distilaide.HuggingFaceRestorationModel
+    upscale: 1
+    embed_dim: 60
+    depths: [4, 4]
+    num_heads: [4, 4]
+  val_metrics: null

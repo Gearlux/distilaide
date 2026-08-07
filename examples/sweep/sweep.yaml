@@ -1,0 +1,70 @@
+# The distilaide backend sweep — the MATRIX, declaratively.
+#
+#   matrainer sweep backends examples/sweep/sweep.yaml                 # frameworks × models, one tracker
+#   matrainer sweep backends examples/sweep/sweep.yaml --tracker csv   # …into the CSV backend
+#   matrainer sweep backends examples/sweep/sweep.yaml --only jax,mlx  # just those two
+#   matrainer sweep trackers examples/sweep/sweep.yaml                 # every tracker, one framework
+#   matrainer sweep all      examples/sweep/sweep.yaml                 # frameworks × models × trackers
+#   matrainer sweep backends examples/sweep/sweep.yaml --dry-run       # print the commands, run nothing
+#
+# This file is the PROJECT's half of the sweep — which cells exist, what each needs installed,
+# which model variants it runs. The MACHINERY (probing, one subprocess per cell, experiment
+# naming from the tracker, failure isolation, the report) is matrainer's
+# (`matrainer.sweep.runner`), and each cell runs through the generic `matrainer train`.
+#
+# Read the resulting table against the BASELINE, not against zero: the NOISY INPUT ITSELF
+# scores PSNR ~20.5 dB on this config, so that is the do-nothing floor every row has to beat.
+# The `*DnCNN` rows train from SCRATCH, which is why `--epochs 1` is a smoke test rather than a
+# comparison — measured, one epoch of `--framework tensorflow` lands at 8.0 dB, still on its
+# way UP to the identity. The 5-epoch default below is what the recorded tables used.
+#
+# ELEVEN cells rather than sixteen, and both gaps are structural (see `all_backends.yaml` for
+# the full argument): there is no non-torch restoration ZOO to wrap — deepinv is torch-only,
+# which is the whole reason the shared spec exists; and huggingface takes no dncnn, because a
+# `Trainer`'s EVALUATION path calls `model(**inputs)` and `TorchDnCNN.forward(images)` takes no
+# `pixel_values=` keyword (measured: it trains, then dies on the first eval).
+#
+# NO ROW PINS AN ENGINE, and that is a RESULT rather than an omission — restoration's Keras
+# metrics are `keras.ops.psnr` and a mean squared error (no per-pixel scatter), so the keras
+# row runs on whichever engine is bound, which is the whole point of that backend. The
+# `tensorflow` row's pin is set by the generic runner itself (`--framework tensorflow` →
+# KERAS_BACKEND), exactly as the project CLI does. A future engine-specific quirk belongs in a
+# row's `env:` mapping, not in the machinery.
+
+config: all_backends.yaml
+epochs: 5
+
+frameworks:
+  - name: lightning
+    requires: [pytorch_lightning]
+    models: [zoo, dncnn]
+  - name: torch
+    models: [zoo, dncnn]
+  - name: fastai
+    models: [zoo, dncnn]
+  - name: keras
+    models: [dncnn]
+  - name: tensorflow
+    models: [dncnn]
+  - name: huggingface
+    requires: [transformers]
+    models: [zoo]
+  - name: jax
+    requires: [flax]
+    models: [dncnn]
+  - name: mlx
+    models: [dncnn]
+
+models:
+  - name: zoo          # the config's default (DeepInvModel) — appends no flag
+  - name: dncnn        # the shared 57,635-parameter spec, reachable via the example's
+    flags: [--model, dncnn]  # `!scope:model=dncnn` block
+
+# `mlflow` first: a file-backed tracker records no run LIFECYCLE (status/seconds stay blank in
+# the report), so MLflow is what a real sweep wants; `--tracker csv` needs no server at all.
+trackers: [mlflow, csv]
+
+# The tracker has to be up before the FIRST run, not after the first failure. Starting the
+# workspace MLflow is this project's knowledge — the runner just executes it once per sweep.
+tracker_setup:
+  mlflow: [aisland, mlflow, start]

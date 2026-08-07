@@ -128,18 +128,17 @@ class TestTheMatrix:
 
         assert {backend for backend, _ in MATRIX} == set(FRAMEWORKS)
 
-    def test_the_driver_walks_exactly_this_matrix(self) -> None:
-        """The shell script and this table must not drift — a cell in one and not the other is
-        either a run nobody checks or a check nothing runs."""
-        script = (SWEEP.parent / "run_sweep.sh").read_text()
-        block = script.split("BACKENDS=(", 1)[1].split(")", 1)[0]
+    def test_the_sweep_spec_declares_exactly_this_matrix(self) -> None:
+        """The declarative spec (`matrainer sweep`'s input) and this table must not drift — a
+        cell in one and not the other is either a run nobody checks or a check nothing runs."""
+        from matrainer.sweep import load_spec
 
-        walked: set[Tuple[str, str]] = set()
-        for line in block.strip().splitlines():
-            backend, _probes, variants, _env = line.strip().strip('"').split(":")
-            walked.update((backend, variant) for variant in variants.split())
-
-        assert walked == set(MATRIX)
+        spec = load_spec(SWEEP.parent / "sweep.yaml")
+        default = spec.models[0].name if spec.models else None
+        declared = {
+            (row.name, model) for row in spec.frameworks for model in (row.models or ([default] if default else []))
+        }
+        assert declared == set(MATRIX)
 
     def test_the_torch_backed_backends_share_one_implementation_of_the_spec(self) -> None:
         """Three backends, one `TorchDnCNN` — the example's top-level block, inherited unchanged.

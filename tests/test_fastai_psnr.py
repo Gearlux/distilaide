@@ -18,7 +18,14 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("fastai")
 
-from distilaide.fastai_restorer import PeakSignalNoiseRatio, _as_metric  # noqa: E402
+from distilaide.deepinv_model import DeepInvModel  # noqa: E402
+from distilaide.fastai_restorer import FastaiRestorer, PeakSignalNoiseRatio  # noqa: E402
+
+
+def _as_metric(name: str, data_range: float = 1.0) -> Any:
+    """Resolve a metric the way a built restorer does — the base's alias-first resolution."""
+    restorer = FastaiRestorer(model=DeepInvModel(arch="dncnn", depth=2, nf=4), data_range=data_range)
+    return restorer._resolve_metric(name)
 
 
 def _batches(sizes: Tuple[int, ...] = (7, 5, 3, 1)) -> List[Tuple[Any, Any]]:

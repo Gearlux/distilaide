@@ -186,7 +186,7 @@ def test_no_backend_derives_its_own_hyperparameters(path: Path) -> None:
     source = path.read_text()
     assert "_config_params" not in source
     assert "_tracked_params" not in source
-    if "LightningRunnable" in source or "TorchLoopRunnable" in source:
+    if "LightningRunnable" in source or "TorchLoopRunnable" in source or "FastaiRunnable" in source:
         # Built on a shared machinery base (2026-08-06), which passes `runnable=self`
         # (`_build_trainer` / `_log_run_context`) — pinned in matrainer's own suite; what the
         # module must not do is shadow that wiring.
@@ -234,7 +234,7 @@ def test_every_backend_puts_its_metrics_on_the_trackers(path: Path) -> None:
     eleven-run table was completely blank while its own log looked perfect.
     """
     source = path.read_text()
-    if "LightningRunnable" in source or "TorchLoopRunnable" in source:
+    if "LightningRunnable" in source or "TorchLoopRunnable" in source or "FastaiRunnable" in source:
         # The bridge lives in the shared machinery base (TrackerLogger adapters / the per-epoch
         # `tracker.log_metrics` call in `fit`) — pinned in matrainer's own suite; the module
         # must not shadow the wiring that carries it.
@@ -275,7 +275,7 @@ def test_a_backend_that_owns_its_loop_accumulates_rather_than_averaging(stem: st
     always optimistic). So a loop we own accumulates and reduces once.
     """
     source = (SOURCE_DIR / f"{stem}.py").read_text()
-    if "TorchLoopRunnable" in source or "LightningRunnable" in source:
+    if "TorchLoopRunnable" in source or "LightningRunnable" in source or "FastaiRunnable" in source:
         # Accumulate-per-batch / reduce-once lives in the shared machinery base
         # (`_epoch_metrics` computes ONCE and resets) — pinned in matrainer's own suite.
         assert "def _epoch_metrics" not in source, f"{stem} shadows the shared reduction"
@@ -467,13 +467,16 @@ def test_the_fastai_loss_needs_no_axis_fix() -> None:
     assert float(L1LossFlat()(preds, target)) == float(nn.L1Loss()(preds, target))
 
 
+def _fastai_metric(name: str, data_range: float = 1.0) -> Any:
+    """Resolve a metric the way a built restorer does — the base's alias-first resolution."""
+    return FastaiRestorer(model=_tiny_model(), data_range=data_range)._resolve_metric(name)
+
+
 def test_the_fastai_metrics_are_names_resolved_against_its_own_module() -> None:
     """fastai's regression metrics are plain FUNCTIONS — there is no class for a tag to resolve."""
-    from distilaide.fastai_restorer import _as_metric
-
-    assert callable(_as_metric("mse"))
+    assert callable(_fastai_metric("mse"))
     with pytest.raises(ValueError, match="fastai.metrics"):
-        _as_metric("definitely_not_a_metric")
+        _fastai_metric("definitely_not_a_metric")
 
 
 def test_psnr_is_the_ONE_name_this_backend_supplies_itself() -> None:
@@ -484,17 +487,15 @@ def test_psnr_is_the_ONE_name_this_backend_supplies_itself() -> None:
     resolves to a CONFIGURED ALIAS holding matrainer's accumulator; the arithmetic and the
     accumulation are pinned in `tests/test_fastai_psnr.py`.
     """
-    from distilaide.fastai_restorer import PeakSignalNoiseRatio, _as_metric
+    from distilaide.fastai_restorer import PeakSignalNoiseRatio
 
-    assert isinstance(_as_metric("psnr"), PeakSignalNoiseRatio)
+    assert isinstance(_fastai_metric("psnr"), PeakSignalNoiseRatio)
 
 
 def test_the_unknown_metric_message_says_where_SSIM_lives() -> None:
     """SSIM is still absent and still honest — there is no shared implementation to accumulate."""
-    from distilaide.fastai_restorer import _as_metric
-
     with pytest.raises(ValueError, match="lightning or torch backend"):
-        _as_metric("ssim")
+        _fastai_metric("ssim")
 
 
 def test_the_fastai_batch_is_a_positional_tuple(pair_records: List[Dict[str, Any]]) -> None:
@@ -509,4 +510,8 @@ def test_the_schedule_import_is_present() -> None:
     """``fit_one_cycle`` is a ``@patch`` installed as an import SIDE EFFECT; without the import it
     falls through fastcore's delegation to the MODEL and raises an AttributeError."""
     source = (SOURCE_DIR / "fastai_restorer.py").read_text()
+    if "FastaiRunnable" in source:
+        # The load-bearing import lives in the shared machinery base (matrainer.fastai.learner,
+        # imported ONCE) — pinned in matrainer's own suite; nothing to restate here.
+        return
     assert "from fastai.callback import schedule" in source

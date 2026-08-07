@@ -595,3 +595,47 @@ preprocess:
 
 The seed values, obviously. What you may not do is make a model seed restore the RNG state, or move
 a `GaussNoise` back out of its `Compose` — each looks tidier and each silently unseeds the run.
+
+---
+
+## 11. The Lightning backend runs on the workspace trainer bases (2026-08-06)
+
+**Context.** The four task projects were a four-way mirror: the same merged
+train/evaluate/test/predict runnable per engine, with the Lightning modules 40–61%
+byte-identical ACROSS projects (tracker wiring, trainer construction, step skeletons, epoch
+reporting, sidecars, outputs) and the task logic near-identical WITHIN each project across its
+engines. Both projects' own comments called the duplication deliberate-and-temporary, deferred
+until the fleet existed to design a base against. By 2026-08-06 it did.
+
+**Decision.** The trainer machinery moved UP to matrainer (its `docs/architecture.md` record 9
+carries the full shape): a neutral abstract API (`TrainerRunnable`), a torch family layer
+pinning the types (`TorchTrainerRunnable`), and the Lightning machinery base
+(`LightningRunnable`). THIS project keeps only its task half, written once for the whole engine
+fleet — `restoration_base.py` (torch-free, importable by every backend) + `restoration_torch.py` (the
+torch-typed hook implementations) — and the concrete Lightning class becomes the composition
+plus its own full flat constructor (the confluid introspection surface, signature unchanged).
+
+**Consequences.** One task behaviour = one hook implementation instead of one copy per engine;
+the fleet drift tests now check "inherits the shared base and does not shadow its wiring"
+instead of per-module source patterns; matrainer is load-bearing for training (the old
+"removing it keeps the class training" claim is dead by design). The other engine backends
+still carry their private copies until their family's migration phase lands (root workspace
+backlog).
+
+**Example.**
+
+```python
+@configurable(task="restoration", role="trainer", framework="torch")
+class LightningRestorer(RestorationTorchHooks, LightningRunnable):
+    def __init__(self, model, train_set=None, ..., data_range=1.0):
+        super().__init__(model=model, train_set=train_set, ...)  # shared slots
+        self.data_range = float(data_range)                                          # task-specific state
+```
+
+**Amendment (2026-08-07).** The bare-torch backend joined the same shape: ``TorchRestorer`` is `(RestorationTorchHooks, matrainer.torch.TorchLoopRunnable)` — the same task hooks, a different machinery base (the owned epoch loop instead of a `pl.Trainer`), and one stored task knob (`data_range`).
+
+**What you may change.** Hook implementations and task state freely; the concrete signature
+(it is the config surface). What you may not do: shadow the inherited machinery
+(`_build_trainer` / `_live_trackers` / `_run_eval` / `_report_epoch_metrics`) — extend through
+the hooks, or change the base in matrainer with every consumer updated in the same workspace
+change.

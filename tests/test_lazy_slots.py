@@ -23,19 +23,32 @@ from distilaide.lightning_restorer import LightningRestorer
 SOURCE_DIR = Path(__file__).resolve().parent.parent / "distilaide"
 
 
-def _slots_flowed_at_runtime() -> Set[str]:
-    """``self.<name>`` passed to ``flow(...)`` anywhere in the runnable's module."""
-    module = inspect.getmodule(LightningRestorer)
-    assert module is not None
-    source = inspect.getsource(module)
-    return set(re.findall(r"flow\(self\.([a-z_]+)", source))
+def _mro_source() -> str:
+    """The runnable's WHOLE implementation: its module plus every base's, workspace-owned only.
+
+    Since the 2026-08-06 consolidation the machinery lives in shared bases (matrainer's
+    trainer API + this project's task bases), so the flowed-slot ↔ declared-lazy pairing must
+    be checked over the union — a module-local scan would find nothing and pass vacuously.
+    """
+    chunks, seen = [], set()
+    for klass in LightningRestorer.__mro__:
+        module = inspect.getmodule(klass)
+        if module is None or module.__name__ in seen:
+            continue
+        if not module.__name__.split(".")[0] in {"distilaide", "matrainer"}:
+            continue
+        seen.add(module.__name__)
+        chunks.append(inspect.getsource(module))
+    return "\n".join(chunks)
 
 
 def test_every_flowed_slot_is_declared_lazy() -> None:
-    flowed = _slots_flowed_at_runtime()
-    assert flowed, "found no flow(self.<slot>) calls — has the dispatch changed?"
+    source = _mro_source()
+    flowed = set(re.findall(r"flow\(\s*self\.([a-z_]+)", source))
+    assert flowed, "found no flow(self.<slot>) calls anywhere in the MRO — has the dispatch changed?"
 
-    undeclared = sorted(flowed - lazy_param_names(LightningRestorer))
+    declared = _declared_lazy_slots(source) | lazy_param_names(LightningRestorer)
+    undeclared = sorted(flowed - declared)
 
     assert not undeclared, (
         f"{undeclared} are flowed at run time but not annotated Lazy[T]. "
@@ -94,7 +107,14 @@ def test_every_backend_declares_the_slots_it_flows() -> None:
     for path in sorted(SOURCE_DIR.glob("*_restorer.py")):
         source = path.read_text()
         flowed = set(re.findall(r"flow\(\s*self\.([a-z_]+)", source))
-        assert flowed, f"{path.name}: found no flow(self.<slot>) calls — has the dispatch changed?"
+        if not flowed:
+            # A module with no flow calls must be one built on the shared bases (the
+            # machinery — and its flows — live there; covered by the MRO-union test above).
+            assert (
+                "RestorationTorchHooks" in source
+            ), f"{path.name}: no flow(self.<slot>) calls and no shared base — has the dispatch changed?"
+            checked += 1
+            continue
 
         undeclared = sorted(flowed - _declared_lazy_slots(source))
         if undeclared:

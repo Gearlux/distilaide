@@ -169,7 +169,14 @@ def test_every_backend_warms_its_sources_before_forking(path: Path) -> None:
     with no Python error at all. fastai makes it worse by setting ``fork`` process-wide at import,
     so every backend sharing that interpreter inherits the hazard.
     """
-    assert "ensure_materialized" in path.read_text(), f"{path.name} does not warm its sources"
+    source = path.read_text()
+    if "RestorationTorchHooks" in source:
+        # Built on the shared bases (2026-08-06): the warm lives in `RestorationBase.initialize`
+        # (via `_prepare` → recordstream's `prepare_record_dataset`, pinned upstream). What this
+        # module must not do is SHADOW that initialize with an unwarmed copy.
+        assert "def initialize" not in source, f"{path.name} shadows the shared (warming) initialize"
+        return
+    assert "ensure_materialized" in source, f"{path.name} does not warm its sources"
 
 
 @pytest.mark.parametrize("path", ALL_BACKEND_SOURCES, ids=lambda p: p.stem)
@@ -179,6 +186,12 @@ def test_no_backend_derives_its_own_hyperparameters(path: Path) -> None:
     source = path.read_text()
     assert "_config_params" not in source
     assert "_tracked_params" not in source
+    if "LightningRunnable" in source or "TorchLoopRunnable" in source:
+        # Built on a shared machinery base (2026-08-06), which passes `runnable=self`
+        # (`_build_trainer` / `_log_run_context`) — pinned in matrainer's own suite; what the
+        # module must not do is shadow that wiring.
+        assert "def _build_trainer" not in source and "def _log_run_context" not in source
+        return
     assert "runnable=self" in source, f"{path.name} does not hand matrainer the runnable"
 
 
@@ -220,9 +233,16 @@ def test_every_backend_puts_its_metrics_on_the_trackers(path: Path) -> None:
     them and wrote the sidecar — and never called `tracker.log_metrics`, so its row in an
     eleven-run table was completely blank while its own log looked perfect.
     """
+    source = path.read_text()
+    if "LightningRunnable" in source or "TorchLoopRunnable" in source:
+        # The bridge lives in the shared machinery base (TrackerLogger adapters / the per-epoch
+        # `tracker.log_metrics` call in `fit`) — pinned in matrainer's own suite; the module
+        # must not shadow the wiring that carries it.
+        assert "def fit" not in source and "def _build_trainer" not in source
+        return
     marker = _TRACKER_METRIC_BRIDGES[path.stem]
 
-    assert marker in path.read_text(), f"{path.name} never reaches a tracker via {marker}"
+    assert marker in source, f"{path.name} never reaches a tracker via {marker}"
 
 
 def test_the_bridge_table_covers_the_whole_fleet() -> None:
@@ -255,6 +275,11 @@ def test_a_backend_that_owns_its_loop_accumulates_rather_than_averaging(stem: st
     always optimistic). So a loop we own accumulates and reduces once.
     """
     source = (SOURCE_DIR / f"{stem}.py").read_text()
+    if "TorchLoopRunnable" in source or "LightningRunnable" in source:
+        # Accumulate-per-batch / reduce-once lives in the shared machinery base
+        # (`_epoch_metrics` computes ONCE and resets) — pinned in matrainer's own suite.
+        assert "def _epoch_metrics" not in source, f"{stem} shadows the shared reduction"
+        return
     assert marker in source, (
         f"{stem}.py no longer shows its accumulate-then-reduce vocabulary ({marker!r}) — "
         "a per-batch PSNR average is not the PSNR of the split."

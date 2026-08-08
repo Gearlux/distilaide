@@ -67,8 +67,12 @@ class RestorationBase(TrainerRunnable):
         Checked here rather than in the model wrapper because it is the TASK that makes it
         wrong: the very same object is exactly right for an evaluation run, which is what a
         classical baseline exists for. Duck-typed over ``parameters()`` so this module stays
-        torch-free.
+        torch-free — and a model TYPE that has no ``parameters()`` at all (a ``keras.Model``)
+        skips the gate: the classical algorithms all live in the torch zoo, so there is
+        nothing to refuse on the other engines.
         """
+        if not hasattr(self.model, "parameters"):
+            return
         if any(p.requires_grad for p in self.model.parameters()):
             return
         arch = getattr(self.model, "arch", type(self.model).__name__)

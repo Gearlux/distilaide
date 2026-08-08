@@ -3,6 +3,11 @@
 These are CONFIG-level on purpose: they load the YAML and inspect what each ``--framework`` value
 resolves to, without needing that engine installed. So a mistake fails on the machine that makes
 it rather than only on one that happens to have the extra.
+
+The MACHINERY (the rewrite, the keras engine pin, the dispatch, the pre-step ORDER) is
+`matrainer.cli`'s since 2026-08-07 and is pinned in matrainer's own `tests/test_cli.py`; what
+stays here is distilaide's half of each seam — the flag against THIS project's spellings, the
+pin against THIS project's tensorflow row, and the table itself.
 """
 
 import inspect
@@ -12,15 +17,9 @@ from typing import Any, Dict, List
 
 import pytest
 import yaml
+from matrainer.cli import VERB_TASKS, normalize_framework_flag, pin_keras_backend, requested_framework, trainer_main
 
-from distilaide.cli import (
-    FRAMEWORKS,
-    VERB_TASKS,
-    _normalize_framework_flag,
-    _pin_keras_backend,
-    _requested_framework,
-    main,
-)
+from distilaide.cli import FRAMEWORKS, main
 
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 CONFIG = EXAMPLES / "train_dncnn_denoising.yaml"
@@ -127,21 +126,21 @@ def test_the_verbs_map_onto_the_runnable_tasks() -> None:
 def test_the_requested_framework_is_read_in_every_spelling(argv: List[str], expected: Any) -> None:
     """Read from ``argv`` because the caller needs it BEFORE the config is loaded — the eager
     ``!class:Foo()`` instance form is built during load, earlier than any handler runs."""
-    assert _requested_framework(argv) == expected
+    assert requested_framework(argv) == expected
 
 
 def test_the_flag_is_rewritten_never_appended() -> None:
     """liquifai binds ``--KEY VAL`` to scope activation only for dimensions the config DECLARES;
     against a config with no such block a bare ``--framework X`` is read as a config OVERRIDE."""
     argv = ["distilaide", "train", "c.yaml", "--framework", "torch"]
-    _normalize_framework_flag(argv)
+    normalize_framework_flag(argv)
     assert argv == ["distilaide", "train", "c.yaml", "--scope", "framework=torch"]
     assert "--framework" not in argv
 
 
 def test_an_explicit_scope_spelling_is_left_alone() -> None:
     argv = ["distilaide", "train", "c.yaml", "--scope", "framework=torch"]
-    _normalize_framework_flag(argv)
+    normalize_framework_flag(argv)
     assert argv == ["distilaide", "train", "c.yaml", "--scope", "framework=torch"]
 
 
@@ -213,14 +212,14 @@ class TestTheKerasEngineIsPinnedForTensorFlow:
         be trained with `tf.GradientTape`.
         """
         monkeypatch.delenv("KERAS_BACKEND", raising=False)
-        _pin_keras_backend(_requested_framework(["distilaide", "train", "c.yaml", "--framework", "tensorflow"]))
+        pin_keras_backend(requested_framework(["distilaide", "train", "c.yaml", "--framework", "tensorflow"]))
 
         assert os.environ.get("KERAS_BACKEND") == "tensorflow"
 
     def test_an_explicit_keras_backend_is_never_overridden(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """`setdefault`, so a deliberate choice survives and the restorer reports the mismatch."""
         monkeypatch.setenv("KERAS_BACKEND", "jax")
-        _pin_keras_backend("tensorflow")
+        pin_keras_backend("tensorflow")
 
         assert os.environ["KERAS_BACKEND"] == "jax"
 
@@ -228,7 +227,7 @@ class TestTheKerasEngineIsPinnedForTensorFlow:
     def test_no_other_framework_touches_it(self, monkeypatch: pytest.MonkeyPatch, framework: Any) -> None:
         """`keras` included: it runs on whichever engine is loaded, which is the whole point of it."""
         monkeypatch.delenv("KERAS_BACKEND", raising=False)
-        _pin_keras_backend(framework)
+        pin_keras_backend(framework)
 
         assert "KERAS_BACKEND" not in os.environ
 
@@ -239,11 +238,14 @@ class TestTheKerasEngineIsPinnedForTensorFlow:
         deliberately no second loss module), so registering imports `distilaide._keras` ->
         `recordstream.keras` and the torch default is bound before `distilaide._tensorflow` can
         setdefault its own. Read from the SOURCE of `main()` rather than by calling it — calling it
-        would run the app.
+        would run the app. The order now lives in the shared `trainer_main` (matrainer pins
+        it too); what THIS test keeps is the project's stake in it — `main()` must delegate
+        there, and the shared body must still pin before it registers.
         """
-        source = inspect.getsource(main)
+        assert "trainer_main" in inspect.getsource(main), "main() must run the shared pre-step order"
+        body = inspect.getsource(trainer_main).split('"' * 3)[-1]
 
-        assert source.index("_pin_keras_backend") < source.index("_register_restoration")
+        assert body.index("pin_keras_backend") < body.index("register_frameworks")
 
     def test_the_engine_the_pin_names_is_the_one_the_registration_module_would_bind_wrong(self) -> None:
         """The premise, so a future edit that gives tensorflow its own loss module fails here."""

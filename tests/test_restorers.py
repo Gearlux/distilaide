@@ -170,10 +170,10 @@ def test_every_backend_warms_its_sources_before_forking(path: Path) -> None:
     so every backend sharing that interpreter inherits the hazard.
     """
     source = path.read_text()
-    if "RestorationTorchHooks" in source:
-        # Built on the shared bases (2026-08-06): the warm lives in `RestorationBase.initialize`
-        # (via `_prepare` → recordstream's `prepare_record_dataset`, pinned upstream). What this
-        # module must not do is SHADOW that initialize with an unwarmed copy.
+    if "RestorationTorchHooks" in source or "KerasRunnable" in source or "TensorFlowRunnable" in source:
+        # Built on the shared bases (2026-08-06, keras family P5 2026-08-07): the warm lives in
+        # `RestorationBase.initialize` (via `_prepare` → recordstream's `prepare_record_dataset`,
+        # pinned upstream). What this module must not do is SHADOW that initialize.
         assert "def initialize" not in source, f"{path.name} shadows the shared (warming) initialize"
         return
     assert "ensure_materialized" in source, f"{path.name} does not warm its sources"
@@ -186,11 +186,15 @@ def test_no_backend_derives_its_own_hyperparameters(path: Path) -> None:
     source = path.read_text()
     assert "_config_params" not in source
     assert "_tracked_params" not in source
-    if "LightningRunnable" in source or "TorchLoopRunnable" in source or "FastaiRunnable" in source:
-        # Built on a shared machinery base (2026-08-06), which passes `runnable=self`
-        # (`_build_trainer` / `_log_run_context`) — pinned in matrainer's own suite; what the
-        # module must not do is shadow that wiring.
+    if any(
+        m in source
+        for m in ("LightningRunnable", "TorchLoopRunnable", "FastaiRunnable", "KerasRunnable", "TensorFlowRunnable")
+    ):
+        # Built on a shared machinery base (2026-08-06, keras family P5 2026-08-07), which passes
+        # `runnable=self` (`_build_trainer` / `_log_run_context` / the family's `_callbacks`) —
+        # pinned in matrainer's own suite; what the module must not do is shadow that wiring.
         assert "def _build_trainer" not in source and "def _log_run_context" not in source
+        assert "def _callbacks" not in source, f"{path.name} shadows the family's tracking callback wiring"
         return
     assert "runnable=self" in source, f"{path.name} does not hand matrainer the runnable"
 
@@ -234,11 +238,15 @@ def test_every_backend_puts_its_metrics_on_the_trackers(path: Path) -> None:
     eleven-run table was completely blank while its own log looked perfect.
     """
     source = path.read_text()
-    if "LightningRunnable" in source or "TorchLoopRunnable" in source or "FastaiRunnable" in source:
+    if any(
+        m in source
+        for m in ("LightningRunnable", "TorchLoopRunnable", "FastaiRunnable", "KerasRunnable", "TensorFlowRunnable")
+    ):
         # The bridge lives in the shared machinery base (TrackerLogger adapters / the per-epoch
-        # `tracker.log_metrics` call in `fit`) — pinned in matrainer's own suite; the module
-        # must not shadow the wiring that carries it.
+        # `tracker.log_metrics` call in `fit` / the family's tracking callback in `_callbacks`)
+        # — pinned in matrainer's own suite; the module must not shadow the wiring.
         assert "def fit" not in source and "def _build_trainer" not in source
+        assert "def _callbacks" not in source, f"{path.name} shadows the family's tracking callback wiring"
         return
     marker = _TRACKER_METRIC_BRIDGES[path.stem]
 
@@ -275,10 +283,13 @@ def test_a_backend_that_owns_its_loop_accumulates_rather_than_averaging(stem: st
     always optimistic). So a loop we own accumulates and reduces once.
     """
     source = (SOURCE_DIR / f"{stem}.py").read_text()
-    if "TorchLoopRunnable" in source or "LightningRunnable" in source or "FastaiRunnable" in source:
+    if any(m in source for m in ("TorchLoopRunnable", "LightningRunnable", "FastaiRunnable", "TensorFlowRunnable")):
         # Accumulate-per-batch / reduce-once lives in the shared machinery base
-        # (`_epoch_metrics` computes ONCE and resets) — pinned in matrainer's own suite.
-        assert "def _epoch_metrics" not in source, f"{stem} shadows the shared reduction"
+        # (`_epoch_metrics` computes ONCE and resets; the TF loop's stateful metric objects
+        # reset per split in `_run_epoch`) — pinned in matrainer's own suite.
+        assert (
+            "def _epoch_metrics" not in source and "def _run_epoch" not in source
+        ), f"{stem} shadows the shared reduction"
         return
     assert marker in source, (
         f"{stem}.py no longer shows its accumulate-then-reduce vocabulary ({marker!r}) — "

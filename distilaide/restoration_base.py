@@ -73,8 +73,15 @@ class RestorationBase(TrainerRunnable):
         """
         if not hasattr(self.model, "parameters"):
             return
-        if any(p.requires_grad for p in self.model.parameters()):
-            return
+        for p in self.model.parameters():
+            if not hasattr(p, "requires_grad"):
+                # Not the torch contract: MLX's `parameters()` is a dict TREE whose
+                # iteration yields KEY strings, not parameter objects. The classical
+                # algorithms all live in the torch zoo, so on another engine there is
+                # nothing to refuse.
+                return
+            if p.requires_grad:
+                return
         arch = getattr(self.model, "arch", type(self.model).__name__)
         raise ValueError(
             f"task='fit' needs a model with trainable parameters, and {arch!r} has none — it is a "

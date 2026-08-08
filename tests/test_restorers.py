@@ -170,10 +170,22 @@ def test_every_backend_warms_its_sources_before_forking(path: Path) -> None:
     so every backend sharing that interpreter inherits the hazard.
     """
     source = path.read_text()
-    if "RestorationTorchHooks" in source or "KerasRunnable" in source or "TensorFlowRunnable" in source:
-        # Built on the shared bases (2026-08-06, keras family P5 2026-08-07): the warm lives in
-        # `RestorationBase.initialize` (via `_prepare` → recordstream's `prepare_record_dataset`,
-        # pinned upstream). What this module must not do is SHADOW that initialize.
+    if any(
+        m in source
+        for m in (
+            "RestorationTorchHooks",
+            "KerasRunnable",
+            "TensorFlowRunnable",
+            "HuggingFaceRunnable",
+            "JaxLoopRunnable",
+            "MlxLoopRunnable",
+        )
+    ):
+        # Built on the shared bases (2026-08-06; keras family P5 2026-08-07; huggingface P6
+        # 2026-08-08): the warm lives in `RestorationBase.initialize` (via `_prepare` →
+        # recordstream's `prepare_record_dataset`, pinned upstream) and the huggingface
+        # machinery re-warms at its entry points. What this module must not do is SHADOW
+        # the shared initialize.
         assert "def initialize" not in source, f"{path.name} shadows the shared (warming) initialize"
         return
     assert "ensure_materialized" in source, f"{path.name} does not warm its sources"
@@ -188,7 +200,16 @@ def test_no_backend_derives_its_own_hyperparameters(path: Path) -> None:
     assert "_tracked_params" not in source
     if any(
         m in source
-        for m in ("LightningRunnable", "TorchLoopRunnable", "FastaiRunnable", "KerasRunnable", "TensorFlowRunnable")
+        for m in (
+            "LightningRunnable",
+            "TorchLoopRunnable",
+            "FastaiRunnable",
+            "KerasRunnable",
+            "TensorFlowRunnable",
+            "HuggingFaceRunnable",
+            "JaxLoopRunnable",
+            "MlxLoopRunnable",
+        )
     ):
         # Built on a shared machinery base (2026-08-06, keras family P5 2026-08-07), which passes
         # `runnable=self` (`_build_trainer` / `_log_run_context` / the family's `_callbacks`) —
@@ -240,7 +261,16 @@ def test_every_backend_puts_its_metrics_on_the_trackers(path: Path) -> None:
     source = path.read_text()
     if any(
         m in source
-        for m in ("LightningRunnable", "TorchLoopRunnable", "FastaiRunnable", "KerasRunnable", "TensorFlowRunnable")
+        for m in (
+            "LightningRunnable",
+            "TorchLoopRunnable",
+            "FastaiRunnable",
+            "KerasRunnable",
+            "TensorFlowRunnable",
+            "HuggingFaceRunnable",
+            "JaxLoopRunnable",
+            "MlxLoopRunnable",
+        )
     ):
         # The bridge lives in the shared machinery base (TrackerLogger adapters / the per-epoch
         # `tracker.log_metrics` call in `fit` / the family's tracking callback in `_callbacks`)
@@ -526,3 +556,36 @@ def test_the_schedule_import_is_present() -> None:
         # imported ONCE) — pinned in matrainer's own suite; nothing to restate here.
         return
     assert "from fastai.callback import schedule" in source
+
+
+# --------------------------------------------------------------------------- #
+# The trainable-model gate must not assume torch's parameters() contract
+# --------------------------------------------------------------------------- #
+def test_the_trainable_gate_skips_a_non_torch_parameters_contract() -> None:
+    """MLX's ``parameters()`` is a dict TREE whose iteration yields KEY strings, not
+    parameter objects — the torch-shaped ``p.requires_grad`` walk exploded on the first
+    mlx sweep cell (``AttributeError: 'str' object has no attribute 'requires_grad'``).
+    The gate now detects the contract per item and skips a foreign one: the classical
+    algorithms all live in the torch zoo, so there is nothing to refuse on other engines.
+    """
+    from types import SimpleNamespace
+
+    from distilaide.restoration_base import RestorationBase
+
+    class _MlxLike:
+        def parameters(self) -> Dict[str, Any]:  # the MLX shape: iteration yields keys
+            return {"net": {"weight": object()}}
+
+    gate = SimpleNamespace(model=_MlxLike())
+    RestorationBase._require_a_trainable_model(cast(Any, gate))  # must not raise
+
+    class _FrozenTorchLike:
+        def parameters(self) -> Any:
+            class _P:
+                requires_grad = False
+
+            return iter([_P()])
+
+    gate.model = _FrozenTorchLike()
+    with pytest.raises(ValueError, match="trainable parameters"):
+        RestorationBase._require_a_trainable_model(cast(Any, gate))

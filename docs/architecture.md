@@ -619,8 +619,8 @@ plus its own full flat constructor (the confluid introspection surface, signatur
 the fleet drift tests now check "inherits the shared base and does not shadow its wiring"
 instead of per-module source patterns; matrainer is load-bearing for training (the old
 "removing it keeps the class training" claim is dead by design). The other engine backends
-still carry their private copies until their family's migration phase lands (root workspace
-backlog).
+joined family by family through 2026-08-08, when the migration COMPLETED — every backend
+now composes its task hooks with a shared machinery base (see the closing amendment below).
 
 **Example.**
 
@@ -635,6 +635,18 @@ class LightningRestorer(RestorationTorchHooks, LightningRunnable):
 **Amendment (2026-08-07).** The bare-torch backend joined the same shape: ``TorchRestorer`` is `(RestorationTorchHooks, matrainer.torch.TorchLoopRunnable)` — the same task hooks, a different machinery base (the owned epoch loop instead of a `pl.Trainer`), and one stored task knob (`data_range`).
 
 **Amendment (2026-08-07, second).** The fastai backend joined: ``FastaiRestorer`` is `(RestorationTorchHooks, matrainer.fastai.FastaiRunnable)` — the same task hooks, the Learner machinery base, plus the task's fastai vocabulary as hooks (the mse/mae default pair, the `psnr` accumulator alias; the default loss falls through to the task hook's L1). Its `evaluate` was harmonized to score the VAL split.
+
+**Amendment (2026-08-07/08, closing — P5 + P6, the migration completes).** The remaining five
+backends joined and the fleet is DONE. P5 (keras family): ``KerasRestorer`` and
+``TensorFlowRestorer`` compose `restoration_keras.py`'s hooks with the two keras-family
+machinery siblings. P6: ``HuggingFaceRestorer`` is ``(RestorationBase,
+matrainer.huggingface.HuggingFaceRunnable)`` — the `compute_loss` Trainer subclass rides the
+machinery's `_trainer_factory` seam — and ``JaxRestorer`` / ``MlxRestorer`` are
+``(RestorationBase, matrainer.jax.JaxLoopRunnable)`` / ``(…, matrainer.mlx.MlxLoopRunnable)``
+with the shared squared-error accumulator as the machinery's split-state hooks (the written-out
+``l1`` where optax ships none; the upstream ``l1_loss`` where MLX does). The mlx migration also
+fixed `RestorationBase`'s trainable-model gate, which assumed torch's `parameters()` contract.
+Every `evaluate` scores the VAL split, fleet-wide.
 
 **What you may change.** Hook implementations and task state freely; the concrete signature
 (it is the config surface). What you may not do: shadow the inherited machinery

@@ -203,12 +203,17 @@ class TestTheTrackerDimension:
             assert type(wired.kwargs[key]).__name__ == "Reference", f"{tracker}: {key} is not a !ref:"
 
     def test_the_sweep_writes_everything_under_one_tree(self) -> None:
-        """Eleven runs must not scatter exports and Trainer checkpoints across the project root."""
+        """Eleven runs must not scatter exports and Trainer checkpoints across the project root.
+
+        The tree is `runs/` — the ONE gitignored output root every project carries (workspace
+        `AGENTS.md`, "Run Output Lands In A Gitignored `runs/`"). `sweep_logs/` keeps only the
+        driver's per-cell `.log` files; everything a RUN produces belongs here.
+        """
         exported = resolve("tensorflow", "dncnn")["runnable"].kwargs["export_dir"]
         hf_output = resolve("huggingface")["runnable"].kwargs["output_dir"]
 
-        assert str(exported).startswith("./sweep_logs/")
-        assert str(hf_output).startswith("./sweep_logs/")
+        assert str(exported).startswith("./runs/")
+        assert str(hf_output).startswith("./runs/")
 
 
 class TestOneVocabulary:

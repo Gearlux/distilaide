@@ -314,7 +314,7 @@ tensorflow: !scope:framework=tensorflow
     # TensorFlow-only knobs, none of which the other backends have an equivalent for.
     jit_compile: false             # XLA on the step functions
     prefetch: true                 # tf.data's AUTOTUNE overlap
-    # export_dir: ./exported/dncnn_denoising   # a SavedModel, written after fit()
+    # export_dir: ./runs/exported/dncnn_denoising   # a SavedModel, written after fit()
   model: !lazy:distilaide.TensorFlowDnCNN
     input_shape: [192, 192, 3]
   preprocess:

@@ -38,7 +38,7 @@ pipeline {
                 sh "${VENV_BIN}/uv pip install --no-deps git+https://github.com/Gearlux/recordstream.git@main"
                 sh "${VENV_BIN}/uv pip install --no-deps git+https://github.com/Gearlux/torpaido.git@main"
                 sh "${VENV_BIN}/uv pip install --no-deps git+https://github.com/Gearlux/matrainer.git@main"
-                sh "${VENV_BIN}/uv pip install -e .[dev,torch,lightning,mlflow,tensorboard]"
+                sh "${VENV_BIN}/uv pip install -e .[dev,torch,lightning,keras,huggingface,mlflow,tensorboard]"
                 // Notebook-only extras (matplotlib, jupyter kernels, etc.) live
                 // in the optional `[notebook]` extra when the project ships
                 // notebooks; absence is not an error.

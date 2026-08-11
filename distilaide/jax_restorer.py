@@ -114,7 +114,7 @@ class JaxRestorer(RestorationBase, JaxLoopRunnable):
 
     def __init__(
         self,
-        model: Mandatory[Lazy[nnx.Module]],
+        model: Optional[Mandatory[Lazy[nnx.Module]]] = None,
         train_set: Optional[Lazy[RecordSource]] = None,
         test_set: Optional[Lazy[RecordSource]] = None,
         data_range: float = 1.0,

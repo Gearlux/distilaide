@@ -97,7 +97,7 @@ class HuggingFaceRestorer(RestorationBase, HuggingFaceRunnable):
 
     def __init__(
         self,
-        model: Mandatory[Lazy[nn.Module]],
+        model: Optional[Mandatory[Lazy[nn.Module]]] = None,
         train_set: Optional[Lazy[RecordSource]] = None,
         test_set: Optional[Lazy[RecordSource]] = None,
         data_range: float = 1.0,

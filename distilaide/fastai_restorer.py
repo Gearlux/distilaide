@@ -101,7 +101,7 @@ class FastaiRestorer(RestorationTorchHooks, FastaiRunnable):
 
     def __init__(
         self,
-        model: Mandatory[Lazy[torch.nn.Module]],
+        model: Optional[Mandatory[Lazy[torch.nn.Module]]] = None,
         train_set: Optional[Lazy[RecordSource]] = None,
         test_set: Optional[Lazy[RecordSource]] = None,
         task: RestorerTask = "fit",

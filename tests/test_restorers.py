@@ -124,7 +124,7 @@ def test_trackers_is_a_constructor_param(cls: Type[Any]) -> None:
 
 @pytest.mark.parametrize("cls", BACKENDS)
 def test_the_constructor_stores_trackers_verbatim(cls: Type[Any]) -> None:
-    """Lazy-init: normalizing here would ITERATE, and a deferred ``Fluid`` is not iterable."""
+    """Partial-init: normalizing here would ITERATE, and a deferred ``Fluid`` is not iterable."""
     marker = object()
     assert cls(model=_tiny_model(), trackers=marker).trackers is marker  # type: ignore[arg-type]
 
@@ -376,11 +376,11 @@ def test_data_range_is_injected_into_every_metric_template() -> None:
 def test_a_template_that_pins_its_own_data_range_keeps_it() -> None:
     """The injection is a FLOOR, not an override — a metric deliberately scored on another scale
     is a legitimate thing to write."""
-    from confluid import LazyClass
+    from confluid import PartialClass
     from torchmetrics.image import PeakSignalNoiseRatio
 
     restorer = LightningRestorer(model=_tiny_model(), data_range=1.0)
-    restorer.metrics = {"psnr": LazyClass(PeakSignalNoiseRatio, data_range=2.0)}
+    restorer.metrics = {"psnr": PartialClass(PeakSignalNoiseRatio, data_range=2.0)}
     built = restorer._build_split_metrics(None, "val/")
     assert float(cast(Any, built["val/psnr"]).data_range) == 2.0
 
@@ -392,10 +392,10 @@ def test_a_split_slot_adds_to_the_shared_set_for_that_split_only() -> None:
     that the sizing dimension is injected per template rather than blanket — the blanket form made
     a perfectly valid metric break the whole collection.
     """
-    from confluid import LazyClass
+    from confluid import PartialClass
     from torchmetrics.image import SpectralAngleMapper
 
-    restorer = LightningRestorer(model=_tiny_model(), val_metrics={"sam": LazyClass(SpectralAngleMapper)})
+    restorer = LightningRestorer(model=_tiny_model(), val_metrics={"sam": PartialClass(SpectralAngleMapper)})
     restorer._resolve_task_defaults()
     val = restorer._build_split_metrics(restorer.val_metrics, "val/")
     train = restorer._build_split_metrics(None, "train/")

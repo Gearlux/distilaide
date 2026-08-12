@@ -26,7 +26,7 @@ from typing import Any, Callable, Dict, Iterable, List, Literal, Optional, Tuple
 import jax.numpy as jnp
 import numpy as np
 import optax
-from confluid import Lazy, Mandatory, configurable
+from confluid import Mandatory, Partial, configurable
 from flax import nnx
 from loggair import get_logger
 from matrainer.jax.loop import JaxLoopRunnable
@@ -114,9 +114,9 @@ class JaxRestorer(RestorationBase, JaxLoopRunnable):
 
     def __init__(
         self,
-        model: Optional[Mandatory[Lazy[nnx.Module]]] = None,
-        train_set: Optional[Lazy[RecordSource]] = None,
-        test_set: Optional[Lazy[RecordSource]] = None,
+        model: Optional[Mandatory[Partial[nnx.Module]]] = None,
+        train_set: Optional[Partial[RecordSource]] = None,
+        test_set: Optional[Partial[RecordSource]] = None,
         data_range: float = 1.0,
         task: RestorerTask = "fit",
         max_epochs: int = 10,
@@ -129,12 +129,12 @@ class JaxRestorer(RestorationBase, JaxLoopRunnable):
         val_metrics: Optional[List[JaxMetric]] = None,
         test_metrics: Optional[List[JaxMetric]] = None,
         optimizer: JaxOptimizer = "adam",
-        trackers: Optional[Union[Lazy[Tracker], Iterable[Lazy[Tracker]]]] = None,
+        trackers: Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]] = None,
         experiment_name: str = "distilaide_restoration",
         run_name: Optional[str] = None,
         input_key: str = "image",
         target_key: str = "target",
-        metric_names: Optional[Lazy[MetricNames]] = None,
+        metric_names: Optional[Partial[MetricNames]] = None,
     ) -> None:
         super().__init__(
             model=model,

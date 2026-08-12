@@ -62,7 +62,7 @@ class HuggingFaceRestorationModel(nn.Module):
         checkpoint_path: Optional Lightning ``.ckpt`` / state-dict to load after the build.
 
     Attributes:
-        restorer: Lazy cache for the built model (``None`` until :meth:`solidify`), PUBLIC for the
+        restorer: Partial cache for the built model (``None`` until :meth:`solidify`), PUBLIC for the
             same reason :class:`~distilaide.deepinv_model.DeepInvModel`'s is — a Lightning
             state_dict must round-trip as ``restorer.*``.
     """

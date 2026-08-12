@@ -24,7 +24,7 @@ Run it with ``distilaide train cfg.yaml --framework fastai``.
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
-from confluid import Lazy, Mandatory, configurable
+from confluid import Mandatory, Partial, configurable
 from fastai.callback.core import Callback as FastaiCallback
 from fastai.metrics import Metric
 from loggair import get_logger
@@ -101,9 +101,9 @@ class FastaiRestorer(RestorationTorchHooks, FastaiRunnable):
 
     def __init__(
         self,
-        model: Optional[Mandatory[Lazy[torch.nn.Module]]] = None,
-        train_set: Optional[Lazy[RecordSource]] = None,
-        test_set: Optional[Lazy[RecordSource]] = None,
+        model: Optional[Mandatory[Partial[torch.nn.Module]]] = None,
+        train_set: Optional[Partial[RecordSource]] = None,
+        test_set: Optional[Partial[RecordSource]] = None,
         task: RestorerTask = "fit",
         max_epochs: int = 10,
         batch_size: int = 8,
@@ -112,13 +112,13 @@ class FastaiRestorer(RestorationTorchHooks, FastaiRunnable):
         weight_decay: Optional[float] = None,
         one_cycle: bool = True,
         opt_func: FastaiOptimizer = "Adam",
-        loss: Optional[Lazy[FastaiLoss]] = None,
+        loss: Optional[Partial[FastaiLoss]] = None,
         metrics: Optional[List[FastaiMetric]] = None,
         val_metrics: Optional[List[FastaiMetric]] = None,
         test_metrics: Optional[List[FastaiMetric]] = None,
-        metric_names: Optional[Lazy[MetricNames]] = None,
-        callbacks: Optional[List[Lazy[FastaiCallback]]] = None,
-        trackers: Optional[Union[Lazy[Tracker], Iterable[Lazy[Tracker]]]] = None,
+        metric_names: Optional[Partial[MetricNames]] = None,
+        callbacks: Optional[List[Partial[FastaiCallback]]] = None,
+        trackers: Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]] = None,
         experiment_name: str = "distilaide_restoration",
         run_name: Optional[str] = None,
         input_key: str = "image",

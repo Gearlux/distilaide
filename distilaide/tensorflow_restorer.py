@@ -35,7 +35,7 @@ outlier — it predated the patterns the machinery base pins):
 
 from typing import Iterable, List, Literal, Optional, Union
 
-from confluid import Lazy, Mandatory, configurable
+from confluid import Mandatory, Partial, configurable
 from loggair import get_logger
 from matrainer.metric_names import MetricNames
 from matrainer.tracking.base import Tracker
@@ -102,9 +102,9 @@ class TensorFlowRestorer(RestorationKerasHooks, TensorFlowRunnable):
 
     def __init__(
         self,
-        model: Optional[Mandatory[Lazy[TensorFlowNetwork]]] = None,
-        train_set: Optional[Lazy[RecordSource]] = None,
-        test_set: Optional[Lazy[RecordSource]] = None,
+        model: Optional[Mandatory[Partial[TensorFlowNetwork]]] = None,
+        train_set: Optional[Partial[RecordSource]] = None,
+        test_set: Optional[Partial[RecordSource]] = None,
         data_range: float = 1.0,
         task: RestorerTask = "fit",
         max_epochs: int = 10,
@@ -112,19 +112,19 @@ class TensorFlowRestorer(RestorationKerasHooks, TensorFlowRunnable):
         jit_compile: bool = False,
         prefetch: bool = True,
         export_dir: Optional[str] = None,
-        trackers: Optional[Union[Lazy[Tracker], Iterable[Lazy[Tracker]]]] = None,
-        callbacks: Optional[List[Lazy[keras.callbacks.Callback]]] = None,
+        trackers: Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]] = None,
+        callbacks: Optional[List[Partial[keras.callbacks.Callback]]] = None,
         experiment_name: str = "distilaide_restoration",
         run_name: Optional[str] = None,
         input_key: str = "image",
         target_key: str = "target",
-        optimizer: Lazy[KerasOptimizer] = "adam",
-        loss: Optional[Lazy[KerasLoss]] = None,
-        metrics: Optional[List[Lazy[KerasMetric]]] = None,
-        train_metrics: Optional[List[Lazy[KerasMetric]]] = None,
-        val_metrics: Optional[List[Lazy[KerasMetric]]] = None,
-        test_metrics: Optional[List[Lazy[KerasMetric]]] = None,
-        metric_names: Optional[Lazy[MetricNames]] = None,
+        optimizer: Partial[KerasOptimizer] = "adam",
+        loss: Optional[Partial[KerasLoss]] = None,
+        metrics: Optional[List[Partial[KerasMetric]]] = None,
+        train_metrics: Optional[List[Partial[KerasMetric]]] = None,
+        val_metrics: Optional[List[Partial[KerasMetric]]] = None,
+        test_metrics: Optional[List[Partial[KerasMetric]]] = None,
+        metric_names: Optional[Partial[MetricNames]] = None,
     ) -> None:
         super().__init__(
             model=model,

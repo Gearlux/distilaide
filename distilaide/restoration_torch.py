@@ -14,7 +14,7 @@ DIFFERENT module: that one registers upstream classes, this one implements hooks
 from typing import Dict, Union
 
 import torch.nn as nn
-from confluid import LazyClass
+from confluid import PartialClass
 from loggair import get_logger
 from matrainer.torch.metrics import MetricsSpec
 from matrainer.torch.runnable import TorchTrainerRunnable
@@ -62,8 +62,8 @@ class RestorationTorchHooks(RestorationBase, TorchTrainerRunnable):
         # one raises rather than quietly scoring against an inferred range; a template that
         # PINS its own keeps it (the injection is a floor).
         return {
-            "psnr": LazyClass[Metric](PeakSignalNoiseRatio),
-            "ssim": LazyClass[Metric](StructuralSimilarityIndexMeasure),
+            "psnr": PartialClass[Metric](PeakSignalNoiseRatio),
+            "ssim": PartialClass[Metric](StructuralSimilarityIndexMeasure),
         }
 
     def _metric_flow_dims(self) -> Dict[str, Union[int, float]]:

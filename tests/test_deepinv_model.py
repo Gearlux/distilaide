@@ -58,7 +58,7 @@ def test_an_unknown_architecture_is_refused_by_name() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Lazy construction
+# Partial construction
 # --------------------------------------------------------------------------- #
 def test_the_constructor_does_no_work() -> None:
     """Zero-arg construction works and builds NOTHING — the workspace lazy-init mandate."""

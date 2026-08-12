@@ -36,7 +36,7 @@ class TorchDnCNN(nn.Module):
         seed: Optional weight-init seed, for a reproducible comparison.
 
     Attributes:
-        net: Lazy cache for the built network (``None`` until :meth:`solidify`). A PUBLIC submodule
+        net: Partial cache for the built network (``None`` until :meth:`solidify`). A PUBLIC submodule
             name, so a state_dict saved through Lightning — which prefixes ``model.``, stripped by
             ``load_lightning_checkpoint`` — round-trips as ``net.*`` keys.
     """

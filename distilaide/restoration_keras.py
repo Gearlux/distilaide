@@ -21,7 +21,7 @@ these hooks override nothing there.
 from typing import Any, List, Optional
 
 import numpy as np
-from confluid import Lazy
+from confluid import Partial
 from loggair import get_logger
 from matrainer.keras.runnable import KerasLoss, KerasMetric
 from recordstream import RestorationOutput
@@ -38,12 +38,12 @@ __all__ = ["RestorationKerasHooks"]
 class RestorationKerasHooks(RestorationBase):
     """The keras-typed restoration hooks, shared by the Keras and TensorFlow concretes."""
 
-    def _default_keras_loss(self) -> Optional[Lazy[KerasLoss]]:
+    def _default_keras_loss(self) -> Optional[Partial[KerasLoss]]:
         """L1, the same choice the torch backends make — a config moving between engines must
         not silently change its objective."""
         return keras.losses.MeanAbsoluteError()
 
-    def _default_keras_metrics(self) -> Optional[List[Lazy[KerasMetric]]]:
+    def _default_keras_metrics(self) -> Optional[List[Partial[KerasMetric]]]:
         """PSNR (through this project's one shim, since ``keras.metrics`` has none) plus the
         mean squared error — both sized/named so the sweep's shared columns fill."""
         return [

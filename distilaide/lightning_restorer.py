@@ -24,7 +24,7 @@ Minimal flat YAML (top-level keys wired by Confluid broadcasting)::
 from typing import Iterable, Optional, Union
 
 import torch.nn as nn
-from confluid import Lazy, Mandatory, configurable
+from confluid import Mandatory, Partial, configurable
 from loggair import get_logger
 from matrainer.lightning import LightningRunnable
 from matrainer.metric_names import MetricNames
@@ -87,15 +87,15 @@ class LightningRestorer(RestorationTorchHooks, LightningRunnable):
 
     def __init__(
         self,
-        model: Optional[Mandatory[Lazy[nn.Module]]] = None,
-        train_set: Optional[Lazy[RecordSource]] = None,
-        test_set: Optional[Lazy[RecordSource]] = None,
+        model: Optional[Mandatory[Partial[nn.Module]]] = None,
+        train_set: Optional[Partial[RecordSource]] = None,
+        test_set: Optional[Partial[RecordSource]] = None,
         data_range: float = 1.0,
         task: RestorerTask = "fit",
         max_epochs: int = 10,
         batch_size: int = 8,
         num_workers: int = 0,
-        trackers: Optional[Union[Lazy[Tracker], Iterable[Lazy[Tracker]]]] = None,
+        trackers: Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]] = None,
         experiment_name: str = "distilaide_restoration",
         run_name: Optional[str] = None,
         input_key: str = "image",
@@ -104,7 +104,7 @@ class LightningRestorer(RestorationTorchHooks, LightningRunnable):
         train_metrics: MetricsSpec = None,
         val_metrics: MetricsSpec = None,
         test_metrics: MetricsSpec = None,
-        metric_names: Optional[Lazy[MetricNames]] = None,
+        metric_names: Optional[Partial[MetricNames]] = None,
     ) -> None:
         super().__init__(
             model=model,

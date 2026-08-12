@@ -122,7 +122,7 @@ class DeepInvModel(nn.Module):
     ``forward(images) -> restored`` only: an image-to-image model's output IS the prediction, so
     the restorer's standard ``loss_fn(preds, target)`` call works with no batch wrapper.
 
-    **Lazy construction (Lazy-Init / Zero-Arg mandate).** ``__init__`` does NO functional work — it
+    **Partial construction (Partial-Init / Zero-Arg mandate).** ``__init__`` does NO functional work — it
     only stores config. The deepinv model (and any pretrained-weight download) is built on first use
     by :meth:`solidify` — called by :meth:`forward`, by confluid's auto-build on ``flow()``, or
     explicitly — and cached in ``self.restorer``, so ``DeepInvModel()`` is cheap and does no network
@@ -170,7 +170,7 @@ class DeepInvModel(nn.Module):
     Attributes:
         checkpoint_strict: Whether ``load_state_dict`` enforces exact key matching. Defaults to
             ``False`` so a differently-configured architecture does not reject the whole load.
-        restorer: Lazy cache for the built deepinv model (``None`` until :meth:`solidify`). A PUBLIC
+        restorer: Partial cache for the built deepinv model (``None`` until :meth:`solidify`). A PUBLIC
             submodule name, so a state_dict saved through Lightning — which prefixes ``model.``,
             stripped by ``load_lightning_checkpoint`` — round-trips as ``restorer.*`` keys that
             match this wrapper's layout. Naming it ``self.model`` would make the strip chew through
@@ -192,7 +192,7 @@ class DeepInvModel(nn.Module):
         # Store config ONLY — no model construction, no weight download, no checkpoint load. The
         # model is built lazily on first use (via `solidify()`, the cached `backbone` property, or
         # `forward()` — all three share the one cache), so this constructor is cheap and zero-arg
-        # construction works (Lazy-Init / Zero-Arg mandate).
+        # construction works (Partial-Init / Zero-Arg mandate).
         self.arch: RestorationArchitecture = arch
         self.in_channels = int(in_channels)
         self.out_channels = int(out_channels)

@@ -1,10 +1,10 @@
 """Every slot a runnable flows at run time must DECLARE itself deferred.
 
-``Lazy[T]`` is what tells a deep-flow walker to leave a slot alone until the runnable flows it with
+``Partial[T]`` is what tells a deep-flow walker to leave a slot alone until the runnable flows it with
 the kwarg that does not exist yet (``params=``, ``dataset=``). Annotating such a slot ``Any`` — or
-hand-writing ``Union[X, Fluid]``, which is the ``Lazy`` alias minus its marker — declares nothing,
+hand-writing ``Union[X, Fluid]``, which is the ``Partial`` alias minus its marker — declares nothing,
 and nothing catches it: the class keeps working only because the slot happens to hold a
-``LazyClass`` value.
+``PartialClass`` value.
 
 This derives the expectation from the SOURCE rather than restating a list, so a slot added tomorrow
 is covered without editing this file.
@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Set
 
-from confluid import lazy_param_names
+from confluid import partial_param_names
 
 from distilaide.lightning_restorer import LightningRestorer
 
@@ -47,11 +47,11 @@ def test_every_flowed_slot_is_declared_lazy() -> None:
     flowed = set(re.findall(r"flow\(\s*self\.([a-z_]+)", source))
     assert flowed, "found no flow(self.<slot>) calls anywhere in the MRO — has the dispatch changed?"
 
-    declared = _declared_lazy_slots(source) | lazy_param_names(LightningRestorer)
+    declared = _declared_lazy_slots(source) | partial_param_names(LightningRestorer)
     undeclared = sorted(flowed - declared)
 
     assert not undeclared, (
-        f"{undeclared} are flowed at run time but not annotated Lazy[T]. "
+        f"{undeclared} are flowed at run time but not annotated Partial[T]. "
         "An auto-flow walker would build them eagerly — for a slot needing a runtime "
         "kwarg, that raises; for the rest it silently discards the deferral."
     )
@@ -62,11 +62,11 @@ def test_the_lazy_scan_sees_this_class_at_all() -> None:
 
     Without this, the assertion above would pass vacuously wherever the scan is blind.
     """
-    assert lazy_param_names(LightningRestorer), "no lazy slots detected — the body scan may be blind here"
+    assert partial_param_names(LightningRestorer), "no lazy slots detected — the body scan may be blind here"
 
 
 def test_no_restorer_declares_its_model_slot_as_lazy_any() -> None:
-    """``Lazy[Any]`` is HALF a declaration — it defers, and says nothing about what fits.
+    """``Partial[Any]`` is HALF a declaration — it defers, and says nothing about what fits.
 
     A reader cannot tell what the slot admits, mypy checks nothing through it, and ``to_pydantic``
     hands navigaitor / StreamStudio an open field. Read from the SOURCE with ``ast`` rather than by
@@ -83,22 +83,22 @@ def test_no_restorer_declares_its_model_slot_as_lazy_any() -> None:
                 if arg.arg != "model" or arg.annotation is None:
                     continue
                 text = ast.unparse(arg.annotation)
-                if "Lazy[Any]" in text:
+                if "Partial[Any]" in text:
                     offenders.append(f"{path.name}: model: {text}")
     assert not offenders, f"name the type the loop requires, not Any: {offenders}"
 
 
 def _declared_lazy_slots(source: str) -> Set[str]:
-    """Slot names a module annotates ``Lazy[...]`` — as a ctor param OR an ``__init__`` body attr."""
-    params = set(re.findall(r"\b([a-z_]+): (?:Mandatory\[)?(?:Optional\[)?Lazy\[", source))
-    body = set(re.findall(r"self\.([a-z_]+): (?:Optional\[)?Lazy\[", source))
+    """Slot names a module annotates ``Partial[...]`` — as a ctor param OR an ``__init__`` body attr."""
+    params = set(re.findall(r"\b([a-z_]+): (?:Mandatory\[)?(?:Optional\[)?Partial\[", source))
+    body = set(re.findall(r"self\.([a-z_]+): (?:Optional\[)?Partial\[", source))
     return params | body
 
 
 def test_every_backend_declares_the_slots_it_flows() -> None:
     """The same rule applied to EVERY backend by reading their SOURCE.
 
-    ``lazy_param_names`` needs the class IMPORTED, and a backend may need a framework a default
+    ``partial_param_names`` needs the class IMPORTED, and a backend may need a framework a default
     install lacks — so an import-based sweep would skip exactly where a copy-pasted slot lands. A
     regex over the module text covers every backend on every machine.
     """
@@ -130,7 +130,7 @@ def test_every_backend_declares_the_slots_it_flows() -> None:
 
     assert checked >= 3, f"expected every backend to be scanned, saw {checked}"
     assert not offenders, (
-        f"{offenders} are flowed at run time but not annotated Lazy[T]. "
+        f"{offenders} are flowed at run time but not annotated Partial[T]. "
         "An auto-flow walker would build them eagerly — for a slot needing a runtime kwarg "
         "(or a positional runtime arg) that raises; for the rest it silently discards the deferral."
     )

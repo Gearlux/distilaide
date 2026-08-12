@@ -49,7 +49,7 @@ class KerasDnCNN(keras.Model):
         kernel_size: int = KERNEL_SIZE,
         seed: int = 0,
     ) -> None:
-        # Lazy: store only, and `super().__init__()` FIRST — a `keras.Layer` refuses attribute
+        # Partial: store only, and `super().__init__()` FIRST — a `keras.Layer` refuses attribute
         # assignment before it.
         super().__init__()
         self.input_shape = tuple(input_shape)

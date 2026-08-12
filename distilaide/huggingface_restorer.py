@@ -31,7 +31,7 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Union, cast
 
 import numpy as np
 import torch.nn as nn
-from confluid import Lazy, Mandatory, configurable, flow
+from confluid import Mandatory, Partial, configurable, flow
 from loggair import get_logger
 from matrainer.huggingface.trainer import HuggingFaceRunnable
 from matrainer.metric_functions import (
@@ -97,9 +97,9 @@ class HuggingFaceRestorer(RestorationBase, HuggingFaceRunnable):
 
     def __init__(
         self,
-        model: Optional[Mandatory[Lazy[nn.Module]]] = None,
-        train_set: Optional[Lazy[RecordSource]] = None,
-        test_set: Optional[Lazy[RecordSource]] = None,
+        model: Optional[Mandatory[Partial[nn.Module]]] = None,
+        train_set: Optional[Partial[RecordSource]] = None,
+        test_set: Optional[Partial[RecordSource]] = None,
         data_range: float = 1.0,
         task: RestorerTask = "fit",
         max_epochs: int = 10,
@@ -107,16 +107,16 @@ class HuggingFaceRestorer(RestorationBase, HuggingFaceRunnable):
         num_workers: int = 0,
         learning_rate: float = 1e-4,
         weight_decay: float = 0.0,
-        loss_fn: Optional[Lazy[nn.Module]] = None,
+        loss_fn: Optional[Partial[nn.Module]] = None,
         metrics: Optional[List[str]] = None,
         val_metrics: Optional[List[str]] = None,
         test_metrics: Optional[List[str]] = None,
-        trackers: Optional[Union[Lazy[Tracker], Iterable[Lazy[Tracker]]]] = None,
+        trackers: Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]] = None,
         experiment_name: str = "distilaide_restoration",
         run_name: Optional[str] = None,
         input_key: str = "image",
         target_key: str = "target",
-        metric_names: Optional[Lazy[MetricNames]] = None,
+        metric_names: Optional[Partial[MetricNames]] = None,
     ) -> None:
         super().__init__(
             model=model,

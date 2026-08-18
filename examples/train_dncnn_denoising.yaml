@@ -10,10 +10,10 @@
 # degradation, the preprocessing, the batch/epoch knobs, the run identity. Only the keys below it
 # change when the training engine does.
 #
-# The top level is also the DEFAULT backend (lightning), so this config runs as-is with no scope at
-# all. An alternative backend is a `!scope:framework=<name>` block that OVERRIDES only the
-# framework-specific keys (document order, last write wins). `--framework <name>` activates it, and
-# it is the SAME flag on either runner:
+# Every backend is a `!scope:framework=<name>` block that OVERRIDES only the framework-specific
+# keys (document order, last write wins), and `default_scopes:` names the one a bare run uses
+# (lightning), so this config runs as-is with no scope at all. `--framework <name>` picks another,
+# and it is the SAME flag on either runner:
 #
 #   distilaide train examples/train_dncnn_denoising.yaml --framework torch
 #   recordstream run examples/train_dncnn_denoising.yaml --framework torch
@@ -24,6 +24,11 @@
 # ===========================================================================
 # Shared — identical for every backend
 # ===========================================================================
+
+# The backend a bare `distilaide train` / `recordstream run` uses. A `--framework <name>` wins over
+# it; the value must name a block below (a typo is the same error a typo'd flag gets); it is a
+# static list — never a `${...}` value.
+default_scopes: [framework=lightning]
 
 experiment_name: gaussian_denoising
 run_name: dncnn_pets_sigma25
@@ -133,20 +138,19 @@ max_epochs: 5
 # ===========================================================================
 # Framework-specific — the ONLY part a backend swap touches
 # ===========================================================================
-# Top level = the default backend (lightning).
+# The `runnable:` lives in each framework block below; the keys HERE are the torch-family defaults
+# every block inherits unless it overrides them.
 #
-# EVERY framework-specific key sits at THIS level — `runnable`, `model` — and an alternative backend
+# EVERY framework-specific key sits at THIS level — `model`, `metrics` — and a backend block
 # overrides the ones it must. That flatness is not cosmetic: a scope block replaces a KEY and takes
 # its whole subtree with it, so a `model:` nested INSIDE `runnable:` would vanish the moment a block
 # swapped the runnable. Keep every slot a sibling of the others and a block can override one without
 # erasing another.
 #
-# No `task:` here on purpose. The restorer's constructor already defaults to `fit`, and every
+# No `task:` anywhere on purpose. The restorer's constructor already defaults to `fit`, and every
 # `distilaide <verb>` sets the task from the verb (train->fit, evaluate->test, predict->predict), so
 # a `task: fit` line would be dead in both paths. Set `task:` only to change what a BARE
 # `recordstream run` does.
-
-runnable: !class:distilaide.LightningRestorer
 
 # deepinv's zoo behind one wrapper, so `arch:` is the whole difference between DnCNN, DRUNet,
 # SCUNet, SwinIR, Restormer — and the classical baselines (see the evaluate config beside this one).
@@ -192,11 +196,10 @@ dncnn: !scope:model=dncnn
     # convolutional and never changes the spatial size.
     input_shape: [192, 192, 3]
 
-# The default backend gets a block of its own even though the top level already IS lightning:
-# confluid raises when a scope activation matches no block, so an undeclared default would make
-# `--framework lightning` an error. That raise is the check a backend SUBCOMMAND could never do — a
-# typo'd `--framework lightnin` now lists the backends this file declares instead of silently
-# training the default one.
+# The default — `default_scopes:` at the top of the file names it, so a bare `distilaide train`
+# runs this block and `--framework lightning` names the same one. A typo'd `--framework lightnin`
+# is an error listing the backends this file declares — the check a backend SUBCOMMAND could never
+# do.
 lightning: !scope:framework=lightning
   runnable: !class:distilaide.LightningRestorer
 

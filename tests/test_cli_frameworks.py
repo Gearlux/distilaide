@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
+import confluid
 import pytest
 import yaml
 from matrainer.cli import VERB_TASKS, normalize_framework_flag, pin_keras_backend, requested_framework, trainer_main
@@ -154,10 +155,14 @@ def test_every_framework_the_cli_advertises_has_a_block_in_the_example() -> None
     assert set(_framework_blocks()) == set(FRAMEWORKS)
 
 
-def test_the_default_backend_gets_a_block_of_its_own() -> None:
-    """The top level already IS lightning, but confluid raises on an activation matching no
-    block — so without this, naming the default explicitly would be an error."""
+def test_the_default_backend_is_a_block_named_by_default_scopes() -> None:
+    """Every backend is a `!scope:framework=<name>` block and `default_scopes:` names the one a
+    bare run uses — no top-level `runnable:` is privileged; confluid's declared-value check binds
+    the default too."""
     assert "lightning" in _framework_blocks()
+    assert _raw_document()["default_scopes"] == ["framework=lightning"]
+    bare = confluid.load(CONFIG, until="document")
+    assert bare["runnable"].target == "distilaide.LightningRestorer"
 
 
 def test_every_block_names_a_runnable() -> None:
@@ -171,9 +176,12 @@ def test_the_framework_specific_keys_are_top_level_siblings() -> None:
     """Flatness is load-bearing: a ``model:`` nested INSIDE ``runnable:`` VANISHES the moment a
     block swaps the runnable, and the run then dies on a missing required argument."""
     document = _raw_document()
-    assert "model" in document
-    runnable = document["runnable"]
-    assert "model" not in runnable, "the model must be a SIBLING of runnable, not nested inside it"
+    assert "model" in document, "the shared model is a TOP-LEVEL key every backend block inherits"
+    assert "runnable" not in document, "the runnable lives in each framework block — `default_scopes:` picks one"
+    for name, block in _framework_blocks().items():
+        runnable = block["runnable"]
+        if isinstance(runnable, dict):
+            assert "model" not in runnable, f"{name!r} nests the model INSIDE its runnable — keep it a sibling"
 
 
 def test_the_fastai_block_restates_its_metrics() -> None:

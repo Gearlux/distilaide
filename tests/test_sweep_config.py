@@ -72,11 +72,11 @@ TRACKERS = {
 NON_TORCH = ("keras", "tensorflow", "fastai", "jax", "mlx", "huggingface")
 
 
-def resolve(framework: str, variant: str = "zoo", tracker: str = "mlflow") -> Dict[str, Any]:
+def load(framework: str, variant: str = "zoo", tracker: str = "mlflow", until="settled") -> Dict[str, Any]:
     scopes = [f"framework={framework}", f"tracker={tracker}"]
     if variant == "dncnn":
         scopes.append("model=dncnn")
-    document = confluid.load(confluid.load_config(SWEEP), flow=False, scopes=scopes)
+    document = confluid.load(SWEEP, until="document", scopes=scopes)
     assert isinstance(document, dict)
     return document
 
@@ -113,7 +113,7 @@ class TestTheMatrix:
         """The regression pin for the replace-not-merge trap described in the module docstring."""
         framework, variant = cell
         expected_runnable, expected_model = MATRIX[cell]
-        document = resolve(framework, variant)
+        document = load(framework, variant, until="settled")
 
         assert target_name(document["runnable"]) == expected_runnable
         assert target_name(document.get("model")) == expected_model
@@ -146,7 +146,7 @@ class TestTheMatrix:
         If one of them ever resolves to something else, a per-backend block has been added where
         the shared one was doing the job, which is the duplication `dncnn/spec.py` exists to avoid.
         """
-        names = {target_name(resolve(fw, "dncnn")["model"]) for fw in ("lightning", "torch", "fastai")}
+        names = {target_name(load(fw, "dncnn", until="settled")["model"]) for fw in ("lightning", "torch", "fastai")}
 
         assert names == {"TorchDnCNN"}
 
@@ -160,7 +160,9 @@ class TestTheMatrix:
         pinned here: without it, `--framework mlx --model dncnn` would train a torch model under
         the MLX name.
         """
-        resolved = {fw: target_name(resolve(fw, "dncnn")["model"]) for fw in ("keras", "tensorflow", "jax", "mlx")}
+        resolved = {
+            fw: target_name(load(fw, "dncnn", until="settled")["model"]) for fw in ("keras", "tensorflow", "jax", "mlx")
+        }
 
         assert resolved == {
             "keras": "KerasDnCNN",
@@ -178,7 +180,7 @@ class TestTheMatrix:
         spliced after the top-level `dncnn:` one, `--model dncnn` simply leaves that row alone,
         which is what keeps the failure impossible instead of merely undocumented.
         """
-        assert target_name(resolve("huggingface", "dncnn")["model"]) == "HuggingFaceRestorationModel"
+        assert target_name(load("huggingface", "dncnn", until="settled")["model"]) == "HuggingFaceRestorationModel"
 
 
 class TestTheTrackerDimension:
@@ -186,7 +188,7 @@ class TestTheTrackerDimension:
 
     @pytest.mark.parametrize("tracker", sorted(TRACKERS))
     def test_each_tracker_scope_selects_exactly_that_backend(self, tracker: str) -> None:
-        trackers = resolve("lightning", tracker=tracker)["trackers"]
+        trackers = load("lightning", tracker=tracker, until="settled")["trackers"]
 
         assert [target_name(t) for t in trackers] == [TRACKERS[tracker]]
 
@@ -197,7 +199,7 @@ class TestTheTrackerDimension:
         A literal here would drift from whatever the run is actually called — the one thing a sweep
         must not do, since the tracker is where the runs are compared.
         """
-        wired = resolve("lightning", tracker=tracker)["trackers"][0]
+        wired = load("lightning", tracker=tracker, until="settled")["trackers"][0]
 
         for key in ("experiment_name", "run_name"):
             assert type(wired.kwargs[key]).__name__ == "Reference", f"{tracker}: {key} is not a !ref:"
@@ -209,8 +211,8 @@ class TestTheTrackerDimension:
         `AGENTS.md`, "Run Output Lands In A Gitignored `runs/`"). `sweep_logs/` keeps only the
         driver's per-cell `.log` files; everything a RUN produces belongs here.
         """
-        exported = resolve("tensorflow", "dncnn")["runnable"].kwargs["export_dir"]
-        hf_output = resolve("huggingface")["runnable"].kwargs["output_dir"]
+        exported = load("tensorflow", "dncnn", until="settled")["runnable"].kwargs["export_dir"]
+        hf_output = load("huggingface", until="settled")["runnable"].kwargs["output_dir"]
 
         assert str(exported).startswith("./runs/")
         assert str(hf_output).startswith("./runs/")
@@ -228,7 +230,7 @@ class TestOneVocabulary:
         check is on the ANNOTATION rather than on the document key — the key is present for every
         framework and that is fine.
         """
-        document = resolve("lightning")
+        document = load("lightning", until="settled")
         assert isinstance(document["metrics"], dict), "the shared set must be a torchmetrics template MAPPING"
         assert set(document["metrics"]) == {"psnr", "mse"}
 
@@ -249,16 +251,16 @@ class TestOneVocabulary:
         and fastai could not, until `_as_metric` grew the CONFIGURED ALIAS that supplies the
         accumulator `fastai.metrics` has no name for.
         """
-        assert "psnr" in resolve("lightning")["metrics"]
-        assert "psnr" in resolve("huggingface")["runnable"].kwargs["metrics"]
-        assert "psnr" in resolve("fastai")["runnable"].kwargs["metrics"]
+        assert "psnr" in load("lightning", until="settled")["metrics"]
+        assert "psnr" in load("huggingface", until="settled")["runnable"].kwargs["metrics"]
+        assert "psnr" in load("fastai", until="settled")["runnable"].kwargs["metrics"]
 
     def test_every_row_reports_mse_too(self) -> None:
         """The second full column, and the control: an error the metric's own definition is built
         on, so a row whose PSNR looks odd can be checked against it."""
-        assert "mse" in resolve("lightning")["metrics"]
-        assert "mse" in resolve("huggingface")["runnable"].kwargs["metrics"]
-        assert "mse" in resolve("fastai")["runnable"].kwargs["metrics"]
+        assert "mse" in load("lightning", until="settled")["metrics"]
+        assert "mse" in load("huggingface", until="settled")["runnable"].kwargs["metrics"]
+        assert "mse" in load("fastai", until="settled")["runnable"].kwargs["metrics"]
 
     def test_ssim_is_deliberately_NOT_in_the_shared_set(self) -> None:
         """It can never be more than a 2-of-11 column: `keras.ops` ships no SSIM and the only
@@ -268,7 +270,7 @@ class TestOneVocabulary:
         The example's own default pair IS PSNR + SSIM, so this is the overlay doing work rather
         than inheriting — which is exactly why it is worth a test.
         """
-        assert "ssim" not in resolve("lightning")["metrics"]
+        assert "ssim" not in load("lightning", until="settled")["metrics"]
 
     def test_the_expensive_validation_metric_is_dropped_for_the_sweep(self) -> None:
         """MS-SSIM is the example's validation-only extra and no non-torch engine has it, so it is
@@ -277,7 +279,7 @@ class TestOneVocabulary:
         `null` restores the SENTINEL meaning "not chosen", which is NOT the same as an empty list:
         an empty list would say the user chose no metrics.
         """
-        assert resolve("lightning")["val_metrics"] is None
+        assert load("lightning", until="settled")["val_metrics"] is None
 
     def test_the_fastai_metrics_are_a_CONSTRUCTOR_kwarg_not_a_sibling_key(self) -> None:
         """The deep-merge position trap: a key only the overlay introduces lands at the END of the
@@ -285,7 +287,7 @@ class TestOneVocabulary:
         block however far up the file that block is written. An explicit constructor kwarg is
         immune to document order.
         """
-        block_metrics = resolve("fastai")["runnable"].kwargs["metrics"]
+        block_metrics = load("fastai", until="settled")["runnable"].kwargs["metrics"]
 
         assert block_metrics == ["psnr", "mse"]
         assert all(isinstance(entry, str) for entry in block_metrics), "a Learner consumes NAMES"
@@ -297,5 +299,5 @@ class TestOneVocabulary:
         THAT backend, and worth leaving out when you want to compare backends.
         """
         for framework in ("fastai", "huggingface"):
-            named = resolve(framework)["runnable"].kwargs["metrics"]
+            named = load(framework, until="settled")["runnable"].kwargs["metrics"]
             assert set(named) <= {"psnr", "mse"}, f"{framework} asks for something outside the shared pair"

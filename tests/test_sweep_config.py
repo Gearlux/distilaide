@@ -72,7 +72,7 @@ TRACKERS = {
 NON_TORCH = ("keras", "tensorflow", "fastai", "jax", "mlx", "huggingface")
 
 
-def load(framework: str, variant: str = "zoo", tracker: str = "mlflow", until="settled") -> Dict[str, Any]:
+def load(framework: str, variant: str = "zoo", tracker: str = "mlflow", until: str = "settled") -> Dict[str, Any]:
     scopes = [f"framework={framework}", f"tracker={tracker}"]
     if variant == "dncnn":
         scopes.append("model=dncnn")

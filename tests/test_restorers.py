@@ -7,6 +7,7 @@ all three rather than written once per backend. What is genuinely per-backend li
 """
 
 import ast
+import importlib.util
 import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Type, cast
@@ -17,7 +18,6 @@ import torch.nn as nn
 from recordstream import collate_records
 
 from distilaide.deepinv_model import DeepInvModel
-from distilaide.fastai_restorer import FastaiRestorer
 from distilaide.lightning_restorer import LightningRestorer
 from distilaide.torch_restorer import TorchRestorer
 
@@ -28,7 +28,17 @@ SOURCE_DIR = Path(__file__).resolve().parent.parent / "distilaide"
 #: default install may lack, so the fleet-wide rules below are SOURCE scans instead (the
 #: `test_tracking_parity` reason: an import-based sweep silently skips exactly the machine where a
 #: copy-pasted omission lands).
-BACKENDS: List[Type[Any]] = [LightningRestorer, TorchRestorer, FastaiRestorer]
+#: fastai is a SELECTABLE extra, so a workspace that did not pick it has no `fastai` at all. The
+#: backend then drops out of the live parametrization and its own tests skip — every OTHER rule in
+#: this file, including all the fleet-wide SOURCE scans, still runs.
+_HAS_FASTAI = importlib.util.find_spec("fastai") is not None
+requires_fastai = pytest.mark.skipif(not _HAS_FASTAI, reason="the fastai backend needs distilaide[fastai]")
+
+BACKENDS: List[Type[Any]] = [LightningRestorer, TorchRestorer]
+if _HAS_FASTAI:
+    from distilaide.fastai_restorer import FastaiRestorer
+
+    BACKENDS.append(FastaiRestorer)
 
 #: Every backend module on disk, for the source-level fleet checks.
 ALL_BACKEND_SOURCES = sorted(SOURCE_DIR.glob("*_restorer.py"))
@@ -72,7 +82,8 @@ def test_an_explicitly_wired_loss_is_never_replaced(cls: Type[Any]) -> None:
     """That is what the ``None`` SENTINEL buys: "not chosen" stays distinguishable from
     "chosen to be the default"."""
     chosen = nn.MSELoss()
-    kwargs = {"loss_fn": chosen} if cls is not FastaiRestorer else {"loss": chosen}
+    is_fastai = cls.__module__.rsplit(".", 1)[-1] == "fastai_restorer"
+    kwargs = {"loss": chosen} if is_fastai else {"loss_fn": chosen}
     restorer = cls(model=_tiny_model())
     for key, value in kwargs.items():
         setattr(restorer, key, value)
@@ -350,7 +361,8 @@ def test_the_torch_family_checked_live_is_the_torch_family_on_disk() -> None:
     here rather than silently going unchecked.
     """
     checked = {cls.__module__.rsplit(".", 1)[-1].removesuffix("_restorer") for cls in BACKENDS}
-    assert checked == {"lightning", "torch", "fastai"}
+    expected = {"lightning", "torch", "fastai"} if _HAS_FASTAI else {"lightning", "torch"}
+    assert checked == expected
 
 
 # --------------------------------------------------------------------------- #
@@ -493,6 +505,7 @@ def test_a_full_torch_loop_reduces_the_loss(pair_records: List[Dict[str, Any]]) 
 # --------------------------------------------------------------------------- #
 # The fastai backend
 # --------------------------------------------------------------------------- #
+@requires_fastai
 def test_the_fastai_loss_needs_no_axis_fix() -> None:
     """The asymmetry with the segmentation task, measured rather than assumed.
 
@@ -510,9 +523,12 @@ def test_the_fastai_loss_needs_no_axis_fix() -> None:
 
 def _fastai_metric(name: str, data_range: float = 1.0) -> Any:
     """Resolve a metric the way a built restorer does — the base's alias-first resolution."""
+    from distilaide.fastai_restorer import FastaiRestorer
+
     return FastaiRestorer(model=_tiny_model(), data_range=data_range)._resolve_metric(name)
 
 
+@requires_fastai
 def test_the_fastai_metrics_are_names_resolved_against_its_own_module() -> None:
     """fastai's regression metrics are plain FUNCTIONS — there is no class for a tag to resolve."""
     assert callable(_fastai_metric("mse"))
@@ -520,6 +536,7 @@ def test_the_fastai_metrics_are_names_resolved_against_its_own_module() -> None:
         _fastai_metric("definitely_not_a_metric")
 
 
+@requires_fastai
 def test_psnr_is_the_ONE_name_this_backend_supplies_itself() -> None:
     """It used to raise here, and the backend sweep is what changed that.
 
@@ -533,14 +550,18 @@ def test_psnr_is_the_ONE_name_this_backend_supplies_itself() -> None:
     assert isinstance(_fastai_metric("psnr"), PeakSignalNoiseRatio)
 
 
+@requires_fastai
 def test_the_unknown_metric_message_says_where_SSIM_lives() -> None:
     """SSIM is still absent and still honest — there is no shared implementation to accumulate."""
     with pytest.raises(ValueError, match="lightning or torch backend"):
         _fastai_metric("ssim")
 
 
+@requires_fastai
 def test_the_fastai_batch_is_a_positional_tuple(pair_records: List[Dict[str, Any]]) -> None:
     """fastai unpacks a batch POSITIONALLY, so the batch must BE a tuple, not a record dict."""
+    from distilaide.fastai_restorer import FastaiRestorer
+
     restorer = FastaiRestorer(model=_tiny_model())
     x, y = restorer._to_tuple(pair_records)
     assert x.shape == y.shape == (4, 3, 32, 32)
@@ -589,3 +610,15 @@ def test_the_trainable_gate_skips_a_non_torch_parameters_contract() -> None:
     gate.model = _FrozenTorchLike()
     with pytest.raises(ValueError, match="trainable parameters"):
         RestorationBase._require_a_trainable_model(cast(Any, gate))
+
+
+def test_persistent_workers_can_be_named_instead_of_derived() -> None:
+    """The HOST-scoped knob: a config says `persistent_workers: false` and keeps its workers.
+
+    macOS terminates persistent workers slowly enough that a short run spends longer stopping
+    than training, which no derivation from `num_workers` can see."""
+    restorer = LightningRestorer(model=_tiny_model(), num_workers=2, persistent_workers=False)
+    for split in ("train_loader", "val_loader", "test_loader"):
+        marker = getattr(restorer, split)
+        assert marker.kwargs["persistent_workers"] is False, split
+        assert marker.kwargs["num_workers"] == 2, split

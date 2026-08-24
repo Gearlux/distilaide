@@ -219,7 +219,13 @@ class TestTheKerasEngineIsPinnedForTensorFlow:
         machine that also carries `distilaide[lightning]` — and a torch-backed `keras.Model` cannot
         be trained with `tf.GradientTape`.
         """
-        monkeypatch.delenv("KERAS_BACKEND", raising=False)
+        # `delenv(raising=False)` records NOTHING when the variable is already absent, so the
+        # direct `os.environ[...] = ...` inside `pin_keras_backend` would have no undo entry and
+        # leak `KERAS_BACKEND=tensorflow` into every later test — where `import keras` then tries
+        # to load a TensorFlow this workspace may not have. Setting it first gives monkeypatch a
+        # record to restore from.
+        monkeypatch.setenv("KERAS_BACKEND", "torch")
+        monkeypatch.delenv("KERAS_BACKEND")
         pin_keras_backend(requested_framework(["distilaide", "train", "c.yaml", "--framework", "tensorflow"]))
 
         assert os.environ.get("KERAS_BACKEND") == "tensorflow"
@@ -234,7 +240,8 @@ class TestTheKerasEngineIsPinnedForTensorFlow:
     @pytest.mark.parametrize("framework", ["lightning", "torch", "keras", "fastai", "jax", "mlx", "huggingface", None])
     def test_no_other_framework_touches_it(self, monkeypatch: pytest.MonkeyPatch, framework: Any) -> None:
         """`keras` included: it runs on whichever engine is loaded, which is the whole point of it."""
-        monkeypatch.delenv("KERAS_BACKEND", raising=False)
+        monkeypatch.setenv("KERAS_BACKEND", "torch")  # see above: gives monkeypatch a record to undo
+        monkeypatch.delenv("KERAS_BACKEND")
         pin_keras_backend(framework)
 
         assert "KERAS_BACKEND" not in os.environ

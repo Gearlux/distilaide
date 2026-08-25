@@ -31,7 +31,7 @@ requires-python = ">=3.12"
 # what makes "the config does not change between backends" true of the INSTALL as well.
 torch = [
     "matrainer[torch]>=0.1.0",
-    "recordstream[torch]>=0.1.0",
+    "recordstream[torch]>=0.1.0a1",
     "torch",
     "torchvision",
     # The image-quality metrics a restoration run is scored on (`PeakSignalNoiseRatio` /
@@ -82,7 +82,7 @@ keras = [
     "torch",                # the engine `distilaide[keras]` runs Keras on
     # The PyDataset batching adapter (`recordstream.keras.RecordSequence`) + the KERAS_BACKEND
     # import ordering this backend depends on.
-    "recordstream[keras]>=0.1.0",
+    "recordstream[keras]>=0.1.0a1",
     # Tracking for a Keras run. matrainer[keras], NOT matrainer[tensorflow]: the callback needs
     # the Keras API, not the TensorFlow engine.
     "matrainer[keras]>=0.1.0",
@@ -91,7 +91,7 @@ keras = [
 tensorflow = [
     "keras>=3.0",           # Keras 3 IS tf.keras in TF >= 2.16
     "tensorflow>=2.16",     # ...this extra's engine
-    "recordstream[keras]>=0.1.0",
+    "recordstream[keras]>=0.1.0a1",
     "matrainer[keras]>=0.1.0",
     "albumentations>=2.0",
 ]
@@ -105,7 +105,7 @@ jax = [
     "optax>=0.2",           # the optimizers and losses; JAX itself ships neither
     # The PyDataset batching adapter (`recordstream.keras.RecordSequence`), reused verbatim —
     # batching a record stream is not a JAX problem.
-    "recordstream[keras]>=0.1.0",
+    "recordstream[keras]>=0.1.0a1",
     "matrainer>=0.1.0",
     "albumentations>=2.0",
 ]
@@ -113,7 +113,7 @@ mlx = [
     # Apple silicon only — the marker keeps `pip install distilaide[mlx]` from failing outright
     # elsewhere, so the extra stays installable (and empty) on any machine.
     "mlx>=0.15; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "recordstream[keras]>=0.1.0",
+    "recordstream[keras]>=0.1.0a1",
     "matrainer>=0.1.0",
     "albumentations>=2.0",
 ]
@@ -125,7 +125,7 @@ huggingface = [
     "transformers>=4.40",
     "accelerate>=0.30",     # what `Trainer` uses for device/distribution placement
     "torch",
-    "recordstream[torch]>=0.1.0",
+    "recordstream[torch]>=0.1.0a1",
     "matrainer[torch]>=0.1.0",
     "albumentations>=2.0",
 ]

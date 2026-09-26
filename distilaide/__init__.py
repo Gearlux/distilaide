@@ -10,9 +10,17 @@ require a framework the operator did not choose. Touching a name whose backend i
 :class:`ImportError` naming the exact extra, instead of a traceback from three libraries down.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from matrainer._exports import lazy_exports
 
-__version__ = "0.2.0"
+try:
+    # Single source of truth: the installed distribution's metadata, i.e. pyproject.toml's
+    # `version` (the distribution is `distilaide`). Never type the number in here as well.
+    __version__ = version("distilaide")
+except PackageNotFoundError:  # pragma: no cover - uninstalled source checkout
+    __version__ = "0.0.0.dev0"
+
 
 #: Backend-owned name -> (defining module, the extra that installs it). Resolved on first attribute
 #: access. Keep in step with the extras in ``pyproject.toml``: a name here whose extra does not

@@ -76,12 +76,11 @@ preprocess:
     std_range: [0.1, 0.1]
     p: 1.0
 
-  - !class:recordstream.ops.torch.ToTensor            # 4+5. both halves to CHW float in [0, 1]
+  - !class:recordstream.ops.numpy.Scale {}           # 4. both halves uint8 -> float in [0, 1]
+  - !class:recordstream.ops.torch.ToTensor            # 5+6. both halves to CHW
     field: image
-    normalize: true
   - !class:recordstream.ops.torch.ToTensor
     field: target
-    normalize: true
 ```
 
 Two consequences worth knowing:
@@ -166,7 +165,7 @@ Every full-reference image metric is defined relative to the span of the target'
 at the top level, and the restorer injects it into every metric template:
 
 ```yaml
-data_range: 1.0     # ToTensor(normalize: true) produces [0, 1]; raw uint8 would be 255.0
+data_range: 1.0     # Scale produces [0, 1]; raw uint8 would be 255.0
 ```
 
 It is not a formality. Measured on one batch of `[0, 1]` images: PSNR reports **20.46 dB** at

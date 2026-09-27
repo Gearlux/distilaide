@@ -10,14 +10,15 @@ license = {text = "MIT"}
 # backend-owned name in `distilaide/__init__.py` resolves lazily to match.
 dependencies = [
     "confluid>=0.3.0",
-    # recordstream ships as a pre-release (0.1.0a1). Under PEP 440 a plain `>=0.1.0`
-    # EXCLUDES every pre-release of 0.1.0, so it would resolve to nothing.
-    "recordstream>=0.1.0a1",
+    # recordstream ships as a pre-release. Under PEP 440 a plain `>=0.1.0` EXCLUDES every
+    # pre-release of 0.1.0, so it would resolve to nothing. 0.1.0a2 is the first release where
+    # `ToTensor` only converts — its example scales with `Scale` before `ToTensor`.
+    "recordstream>=0.1.0a2",
     "liquifai>=0.1.0",
     "loggair>=0.1.0",
     # matrainer is the TRACKING library (and the metric-slot rule + artifact writers). Its own
     # core install is light — no torch — so it belongs here rather than in a backend extra.
-    "matrainer>=0.1.0",
+    "matrainer>=0.1.0a1",
 ]
 requires-python = ">=3.12"
 
@@ -30,8 +31,8 @@ requires-python = ">=3.12"
 # declares `distilaide[torch]` rather than restating the list. That is not just economy — it is
 # what makes "the config does not change between backends" true of the INSTALL as well.
 torch = [
-    "matrainer[torch]>=0.1.0",
-    "recordstream[torch]>=0.1.0a1",
+    "matrainer[torch]>=0.1.0a1",
+    "recordstream[torch]>=0.1.0a2",
     "torch",
     "torchvision",
     # The image-quality metrics a restoration run is scored on (`PeakSignalNoiseRatio` /
@@ -47,7 +48,7 @@ torch = [
 ]
 lightning = [
     "distilaide[torch]",
-    "matrainer[lightning]>=0.1.0",
+    "matrainer[lightning]>=0.1.0a1",
     "pytorch-lightning",
 ]
 # TWO upper bounds, both upstream breaks and both removable when upstream fixes them — do NOT
@@ -82,17 +83,17 @@ keras = [
     "torch",                # the engine `distilaide[keras]` runs Keras on
     # The PyDataset batching adapter (`recordstream.keras.RecordSequence`) + the KERAS_BACKEND
     # import ordering this backend depends on.
-    "recordstream[keras]>=0.1.0a1",
+    "recordstream[keras]>=0.1.0a2",
     # Tracking for a Keras run. matrainer[keras], NOT matrainer[tensorflow]: the callback needs
     # the Keras API, not the TensorFlow engine.
-    "matrainer[keras]>=0.1.0",
+    "matrainer[keras]>=0.1.0a1",
     "albumentations>=2.0",
 ]
 tensorflow = [
     "keras>=3.0",           # Keras 3 IS tf.keras in TF >= 2.16
     "tensorflow>=2.16",     # ...this extra's engine
-    "recordstream[keras]>=0.1.0a1",
-    "matrainer[keras]>=0.1.0",
+    "recordstream[keras]>=0.1.0a2",
+    "matrainer[keras]>=0.1.0a1",
     "albumentations>=2.0",
 ]
 # JAX and MLX bring NO zoo to wrap — deepinv is torch-only and nothing publishes JAX or MLX
@@ -105,16 +106,16 @@ jax = [
     "optax>=0.2",           # the optimizers and losses; JAX itself ships neither
     # The PyDataset batching adapter (`recordstream.keras.RecordSequence`), reused verbatim —
     # batching a record stream is not a JAX problem.
-    "recordstream[keras]>=0.1.0a1",
-    "matrainer>=0.1.0",
+    "recordstream[keras]>=0.1.0a2",
+    "matrainer>=0.1.0a1",
     "albumentations>=2.0",
 ]
 mlx = [
     # Apple silicon only — the marker keeps `pip install distilaide[mlx]` from failing outright
     # elsewhere, so the extra stays installable (and empty) on any machine.
     "mlx>=0.15; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "recordstream[keras]>=0.1.0a1",
-    "matrainer>=0.1.0",
+    "recordstream[keras]>=0.1.0a2",
+    "matrainer>=0.1.0a1",
     "albumentations>=2.0",
 ]
 # `transformers` runs its models on torch here, so this extra names torch's stack — but NOT
@@ -125,8 +126,8 @@ huggingface = [
     "transformers>=4.40",
     "accelerate>=0.30",     # what `Trainer` uses for device/distribution placement
     "torch",
-    "recordstream[torch]>=0.1.0a1",
-    "matrainer[torch]>=0.1.0",
+    "recordstream[torch]>=0.1.0a2",
+    "matrainer[torch]>=0.1.0a1",
     "albumentations>=2.0",
 ]
 # TRACKING BACKENDS. Tracking runs through matrainer — distilaide imports neither mlflow nor
@@ -134,8 +135,8 @@ huggingface = [
 # exist because `[tool.aisland] trackers` below NAMES them: `aisland tracker set mlflow`
 # intersects that declaration with the operator's selection and installs `distilaide[mlflow]`,
 # and an extra that is declared but never defined makes uv warn and install nothing.
-mlflow = ["matrainer[mlflow]>=0.1.0"]
-tensorboard = ["matrainer[tensorboard]>=0.1.0"]
+mlflow = ["matrainer[mlflow]>=0.1.0a1"]
+tensorboard = ["matrainer[tensorboard]>=0.1.0a1"]
 dev = [
     "black>=24.0.0,<25.0.0",
     "isort>=5.13.0,<6.0.0",

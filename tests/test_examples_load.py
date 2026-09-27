@@ -15,6 +15,7 @@ import pytest
 import torch
 from recordstream import Stream, batch_tensor, collate_records
 from recordstream.ops.image import ConvertToImage
+from recordstream.ops.numpy import Scale
 from recordstream.ops.structure import CopyField
 from recordstream.ops.torch import ToTensor
 
@@ -37,8 +38,9 @@ def _example_chain(sigma: float = 0.1, size: int = 32) -> list:
         ConvertToImage(field="image", width=size, height=size, colormap="gray"),
         CopyField(src="image", dst="target"),
         A.GaussNoise(std_range=(sigma, sigma), mean_range=(0.0, 0.0), per_channel=True, p=1.0),
-        ToTensor(field="image", normalize=True),
-        ToTensor(field="target", normalize=True),
+        Scale(),
+        ToTensor(field="image"),
+        ToTensor(field="target"),
     ]
 
 
@@ -129,8 +131,9 @@ def test_a_resize_after_the_copy_would_unpair_the_record() -> None:
         ConvertToImage(field="image", width=48, height=48, colormap="gray"),
         CopyField(src="image", dst="target"),
         A.Resize(height=16, width=16),  # AFTER the copy: reaches `image` only
-        ToTensor(field="image", normalize=True),
-        ToTensor(field="target", normalize=True),
+        Scale(),
+        ToTensor(field="image"),
+        ToTensor(field="target"),
     ]
     record = next(iter(Stream(source=_synthetic_source(1), ops=broken)))
     assert record["image"].shape != record["target"].shape

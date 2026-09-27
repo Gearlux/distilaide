@@ -53,7 +53,7 @@ class LightningRestorer(RestorationTorchHooks, LightningRunnable):
         test_set: Held-out eval dataset / Stream (for ``task="test"`` / ``"predict"``; also tested
             after ``fit`` when set).
         data_range: The span of the target images' values — ``1.0`` for the ``[0, 1]`` floats a
-            ``ToTensor(normalize=True)`` pipeline produces, ``255.0`` for raw ``uint8``. Injected
+            ``Scale`` op produces, ``255.0`` for raw ``uint8``. Injected
             into every metric template, and NOT a formality: PSNR is defined relative to it, so a
             wrong value shifts every score by a constant nobody notices (measured on one batch of
             ``[0, 1]`` images — 20.46 dB at ``1.0``, **68.59 dB** at ``255.0``, same tensors).

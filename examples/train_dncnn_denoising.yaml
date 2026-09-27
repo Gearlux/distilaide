@@ -93,16 +93,16 @@ preprocess:
         per_channel: true
         p: 1.0
 
-  # 4+5. HWC uint8 -> CHW float32 in [0, 1], for BOTH halves of the pair. `normalize: true` is the
-  #      /255 that puts them on the scale `data_range: 1.0` below declares. Two ops rather than one
-  #      because `ToTensor` is field-scoped, and the pair must be converted identically — a
-  #      normalized input against a uint8 target is a loss that never converges and never says why.
+  # 4. uint8 [0, 255] -> float32 [0, 1], for BOTH halves of the pair — `Scale` with no `field`
+  #    changes every Image in the record. That is the scale `data_range: 1.0` below declares, and
+  #    the pair must be scaled identically: a scaled input against a uint8 target is a loss that
+  #    never converges and never says why.
+  - !class:recordstream.ops.numpy.Scale {}
+  # 5+6. HWC -> CHW, nothing else. Two ops rather than one because `ToTensor` is field-scoped.
   - !class:recordstream.ops.torch.ToTensor
     field: image
-    normalize: true
   - !class:recordstream.ops.torch.ToTensor
     field: target
-    normalize: true
 
 # The dataset exposes `train` and `test` (no `validation`), so the held-out split is `test`. The
 # nested source needs the INSTANCE form — `!class:...()` WITH parens — or `Stream.source` stays a
@@ -245,12 +245,11 @@ fastai: !scope:framework=fastai
 #     `ops: !ref:preprocess`, and `!ref:` resolves against the MERGED document, so one override moves
 #     train and validation together and they cannot drift.
 #
-#     **Dropping `ToTensor` drops the /255 SCALING as well as the layout, and that is the trap.**
-#     `ToTensor(normalize=true)` was doing two jobs; without it the images stay uint8 in [0, 255]
-#     while `data_range: 1.0` still says otherwise, and the run reports `psnr: -27` and `mse: 548`
-#     (hit for real). So a `Normalize` with `std: 1` and `max_pixel_value: 255` does the scaling
-#     alone — and it goes ABOVE the copy, so BOTH halves inherit it. Every engine then has its
-#     targets in [0, 1] and one `data_range` is true for all of them.
+#     **The scaling is the step to keep.** Without it the images stay uint8 in [0, 255] while
+#     `data_range: 1.0` still says otherwise, and the run reports `psnr: -27` and `mse: 548` (hit
+#     for real). Here a `Normalize` with `std: 1` and `max_pixel_value: 255` does the scaling — and
+#     it goes ABOVE the copy, so BOTH halves inherit it. Every engine then has its targets in [0, 1]
+#     and one `data_range` is true for all of them.
 #
 #     A consequence worth knowing: `GaussNoise` now runs on FLOAT data rather than uint8, where
 #     albumentations reads `std_range` against a max of 1.0 instead of 255 — so the same
@@ -276,7 +275,7 @@ keras: !scope:framework=keras
       height: 192
       colormap: gray
     # uint8 [0, 255] -> float32 [0, 1], ABOVE the copy so both halves inherit it. `std: 1` and
-    # `mean: 0` make this a pure rescale — it is the /255 the torch chain's ToTensor does.
+    # `mean: 0` make this a pure rescale — the same /255 the torch chain's `Scale` does.
     - !class:albumentations.Normalize
       mean: [0.0, 0.0, 0.0]
       std: [1.0, 1.0, 1.0]

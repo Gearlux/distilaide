@@ -1,0 +1,510 @@
+# One restoration config, every training backend — Gaussian denoising, the textbook image→image task.
+#
+#   distilaide train examples/train_dncnn_denoising.yaml
+#   recordstream run examples/train_dncnn_denoising.yaml   # generic runner, no verb
+#
+# ---------------------------------------------------------------------------
+# The shape of this file IS the demo
+# ---------------------------------------------------------------------------
+# Everything above the "framework-specific" divider is engine-agnostic: the dataset, the
+# degradation, the preprocessing, the batch/epoch knobs, the run identity. Only the keys below it
+# change when the training engine does.
+#
+# Every backend is a `!scope:framework=<name>` block that OVERRIDES only the framework-specific
+# keys (document order, last write wins), and `default_scopes:` names the one a bare run uses
+# (lightning), so this config runs as-is with no scope at all. `--framework <name>` picks another,
+# and it is the SAME flag on either runner:
+#
+#   distilaide train examples/train_dncnn_denoising.yaml --framework torch
+#   recordstream run examples/train_dncnn_denoising.yaml --framework torch
+#
+# The name must match a block below. `--framework torh` is an ERROR listing the backends this file
+# declares, not a silent fall-through to the default.
+
+# ===========================================================================
+# Shared — identical for every backend
+# ===========================================================================
+
+# The backend a bare `distilaide train` / `recordstream run` uses. A `--framework <name>` wins over
+# it; the value must name a block below (a typo is the same error a typo'd flag gets); it is a
+# static list — never a `${...}` value.
+default_scopes: [framework=lightning]
+
+experiment_name: gaussian_denoising
+run_name: dncnn_pets_sigma25
+
+# ---------------------------------------------------------------------------
+# The degradation IS the task, and it lives in the config
+# ---------------------------------------------------------------------------
+# There is no paired noisy/clean dataset here, and that is deliberate rather than a compromise.
+# A denoising pair is MADE, not found: DnCNN, DRUNet and SCUNet were all trained by adding synthetic
+# Gaussian noise to clean photographs, because the clean image is the only ground truth that exists
+# — a real noisy photograph has no noise-free twin. So the target is DERIVED from the input, three
+# ops below, and the noise level is one number a reader can change.
+#
+# The consequence worth knowing: the dataset is interchangeable. Oxford-IIIT Pet is used because it
+# is natural photography (the same kind of content BSD400 supplies in the original papers), it is
+# small, and this workspace already caches it. Any image dataset works — what makes the run a
+# DENOISING run is `noise_sigma`, not the source.
+#
+# 0.1 in [0, 1] units = sigma 25 on the 0-255 scale the denoising literature quotes, which is the
+# standard middle rung of the {15, 25, 50} benchmark ladder.
+noise_sigma: 0.1
+
+preprocess:
+  # 1. The dataset's photo -> a uint8 HWC RGB image at a fixed raster. The resize happens HERE,
+  #    BEFORE the copy below, and the ordering is load-bearing: a bare albumentations transform
+  #    only ever receives albumentations' OWN key vocabulary (`image` / `mask` / `bboxes` / …), so
+  #    a geometric augmentation placed after the copy would move the input and leave the target
+  #    where it was, silently unpairing every record. Everything that must happen to BOTH halves
+  #    goes above step 2; everything that must happen to the input ALONE goes below it.
+  #
+  #    192 rather than a rounder 128, and the number comes from a METRIC rather than from the
+  #    model: MS-SSIM (wired on validation below) halves the image once per beta, so its default
+  #    five-scale pyramid needs an image larger than 160 px and a 128 px run dies inside Lightning's
+  #    sanity check with *"the image height must be larger than 160"*. DnCNN itself is fully
+  #    convolutional and would take any size.
+  - !class:recordstream.ops.image.ConvertToImage
+    field: image
+    width: 192
+    height: 192
+    colormap: gray   # only consulted for 2-D inputs; an RGB photo passes through as-is
+
+  # 2. The clean copy — this is the whole of "where does the target come from". `CopyField` is
+  #    recordstream's own key-plumbing op; restoration needed no new primitive for it.
+  - !class:recordstream.ops.structure.CopyField
+    src: image
+    dst: target
+
+  # 3. The degradation, applied to the INPUT only. `std_range` is a fraction of the value range, so
+  #    (0.1, 0.1) is a FIXED sigma rather than a random draw — the textbook known-sigma setup, and
+  #    what lets a noise-conditioned architecture (DRUNet, BM3D) be told the level it will face.
+  #    Widen the range to train a blind denoiser across noise levels.
+  # Wrapped in a `Compose` ONLY to carry `seed:`, which is the only place albumentations accepts
+  # one — a bare transform builds its own RNG from OS entropy and warns that `seed` is not a valid
+  # argument (measured). Two fresh seeded Composes draw identically; ONE Compose called twice does
+  # not, which is what a per-record stream needs.
+  - !class:albumentations.Compose
+    seed: 0
+    transforms:
+      - !class:albumentations.GaussNoise
+        std_range: [0.1, 0.1]
+        mean_range: [0.0, 0.0]
+        per_channel: true
+        p: 1.0
+
+  # 4. uint8 [0, 255] -> float32 [0, 1], for BOTH halves of the pair — `Scale` with no `field`
+  #    changes every Image in the record. That is the scale `data_range: 1.0` below declares, and
+  #    the pair must be scaled identically: a scaled input against a uint8 target is a loss that
+  #    never converges and never says why.
+  - !class:recordstream.ops.numpy.Scale {}
+  # 5+6. HWC -> CHW, nothing else. Two ops rather than one because `ToTensor` is field-scoped.
+  - !class:recordstream.ops.torch.ToTensor
+    field: image
+  - !class:recordstream.ops.torch.ToTensor
+    field: target
+
+# The dataset exposes `train` and `test` (no `validation`), so the held-out split is `test`. The
+# nested source needs the INSTANCE form — `!class:...()` WITH parens — or `Stream.source` stays a
+# deferred Class marker and iteration raises.
+#
+# `count:` caps both splits for a fast smoke run; delete both lines to train on all 3680 / 3669 rows.
+train_set: !class:recordstream.Stream
+  source: !class:recordstream.sources.huggingface.HuggingFaceSource()
+    path: dpdl-benchmark/oxford_iiit_pet
+    split: train
+    count: 256
+  ops: !ref:preprocess
+
+val_set: !class:recordstream.Stream
+  source: !class:recordstream.sources.huggingface.HuggingFaceSource()
+    path: dpdl-benchmark/oxford_iiit_pet
+    split: test
+    count: 64
+  ops: !ref:preprocess
+
+# The span of the target images' values, and the one number every full-reference metric is defined
+# relative to. `1.0` because step 4 above divides by 255; a pipeline handing over raw uint8 would
+# say 255.0. It is NOT a formality: measured on one batch of [0, 1] images, PSNR reports 20.46 dB at
+# data_range 1.0 and 68.59 dB at 255.0 — the same tensors, scored as if the model were near-perfect.
+# torchmetrics makes it a REQUIRED argument of PeakSignalNoiseRatio for exactly this reason, so the
+# restorer injects it into every metric template rather than letting one default quietly.
+data_range: 1.0
+
+batch_size: 8
+num_workers: 4
+max_epochs: 5
+
+# ===========================================================================
+# Framework-specific — the ONLY part a backend swap touches
+# ===========================================================================
+# The `runnable:` lives in each framework block below; the keys HERE are the torch-family defaults
+# every block inherits unless it overrides them.
+#
+# EVERY framework-specific key sits at THIS level — `model`, `metrics` — and a backend block
+# overrides the ones it must. That flatness is not cosmetic: a scope block replaces a KEY and takes
+# its whole subtree with it, so a `model:` nested INSIDE `runnable:` would vanish the moment a block
+# swapped the runnable. Keep every slot a sibling of the others and a block can override one without
+# erasing another.
+#
+# No `task:` anywhere on purpose. The restorer's constructor already defaults to `fit`, and every
+# `distilaide <verb>` sets the task from the verb (train->fit, evaluate->test, predict->predict), so
+# a `task: fit` line would be dead in both paths. Set `task:` only to change what a BARE
+# `recordstream run` does.
+
+# deepinv's zoo behind one wrapper, so `arch:` is the whole difference between DnCNN, DRUNet,
+# SCUNet, SwinIR, Restormer — and the classical baselines (see the evaluate config beside this one).
+#
+# `!lazy:` so the wrapper builds its network at run time rather than at config-load time: a config
+# that is merely inspected downloads nothing and allocates nothing.
+#
+# `pretrained` is unset, so this trains from scratch. That is distilaide's default and a deliberate
+# divergence from deepinv's own (`"download"`): a training project must not silently start from
+# somebody else's weights. Add `pretrained: download` to fine-tune from the published ones.
+model: !lazy:distilaide.DeepInvModel
+  arch: dncnn
+  in_channels: 3
+  # DnCNN is a BLIND denoiser — it ignores the noise level, so no `sigma:` line here. A
+  # noise-conditioned architecture needs one: `arch: drunet` + `sigma: 0.1` (the same number as
+  # `noise_sigma` above, since both are in [0, 1] units), and it FAILS without it rather than
+  # guessing.
+
+# --- the SHARED SPEC as a second dimension: `--model dncnn` ------------------
+# The zoo above and this block are the two kinds of model in this project, and they answer
+# different questions. `DeepInvModel` reaches somebody else's architecture (fourteen of them) and
+# is torch-ONLY; `TorchDnCNN` implements `distilaide/dncnn/spec.py` and wraps nothing, which is
+# what lets the SAME 57,635-parameter network train under five frameworks.
+#
+# It is here in the EXAMPLE rather than only in the sweep overlay because making the shared spec
+# reachable is worth having on a default checkout — before this block `TorchDnCNN` was wired
+# NOWHERE outside its own unit test, while its four siblings each trained from their framework
+# blocks below. `--model dncnn` reaches it on lightning / torch / fastai:
+#
+#   distilaide train examples/train_dncnn_denoising.yaml --framework torch --model dncnn
+#
+# The four non-torch blocks below need NO nested block of their own: each wires its implementation
+# unconditionally and is spliced AFTER this one, so `--framework mlx --model dncnn` already reaches
+# `MlxDnCNN`. That is a property of document ORDER, so it is pinned by a test.
+#
+# Expect it to score BELOW the zoo row: 57,635 parameters against DnCNN-17's 668K is the whole
+# difference, measured on one loop at 20.74 dB against 21.47. This block is the CONTROL — the same
+# architecture in five vocabularies — not the recommendation.
+dncnn: !scope:model=dncnn
+  model: !lazy:distilaide.TorchDnCNN
+    # `(H, W, C)` — channels-LAST even though the torch tensor is NCHW, so ONE config line drives
+    # any of the five implementations. Unlike a U-Net there is no size divisor: DnCNN is fully
+    # convolutional and never changes the spatial size.
+    input_shape: [192, 192, 3]
+
+# The default — `default_scopes:` at the top of the file names it, so a bare `distilaide train`
+# runs this block and `--framework lightning` names the same one. A typo'd `--framework lightnin`
+# is an error listing the backends this file declares — the check a backend SUBCOMMAND could never
+# do.
+lightning: !scope:framework=lightning
+  runnable: !class:distilaide.LightningRestorer
+
+# --- torch: the control experiment ------------------------------------------
+# The SMALLEST block in the file, and that is the point. This backend removes the training FRAMEWORK
+# entirely — the loop is written out, `zero_grad`/`backward`/`step` in the open — and the config
+# still does not change: same dataset, same degradation, same model, same loss, same metrics, same
+# artifacts. If a knob only worked because Lightning implemented it, it shows up here.
+#
+# What it does NOT have is honest rather than missing: no `lightning:` Trainer slot and no framework
+# loggers (tracking goes through `trackers:`, which every backend has), no callback protocol, no
+# distributed strategy. Multi-GPU is out of scope deliberately — that is what Lightning is for.
+torch: !scope:framework=torch
+  runnable: !class:distilaide.TorchRestorer
+    # Knobs the other backends have no equivalent for: an explicit device (an explicit value is
+    # taken at its word, so a CPU-vs-GPU comparison cannot silently fall back), and a plain
+    # state_dict checkpoint — there is no framework format to write.
+    device: auto
+
+# --- fastai: swap the LOOP and nothing else ---------------------------------
+# fastai runs on torch, so it reuses the same model, the same batch shape and the same collate; what
+# it brings is one-cycle scheduling. The block overrides `runnable` and `metrics` and NOTHING else.
+#
+# `metrics:` MUST be restated here, and that is not a style choice: the shared `metrics:` key (left
+# unset above, so the restorer's PSNR/SSIM templates apply) is a torchmetrics TEMPLATE MAPPING,
+# which a fastai Learner cannot consume. fastai metrics are NAMES resolved against `fastai.metrics`,
+# and for an image-to-image task the meaningful ones are the plain pixel errors — fastai ships no
+# PSNR or SSIM, which is a fact about fastai rather than about this project.
+fastai: !scope:framework=fastai
+  runnable: !class:distilaide.FastaiRestorer
+    one_cycle: true
+    learning_rate: 0.001
+  metrics:
+    - mse
+    - mae
+
+# --- keras: the first backend that is not torch -----------------------------
+# TWO differences from every torch block, and both are about the ENGINE rather than the task.
+#
+# (1) **Keras is channels-LAST.** So a Keras run's preprocess chain drops the two `ToTensor` steps,
+#     which produce CHW. `preprocess:` is overridden here rather than inside `train_set`, and that is
+#     what makes the split definitions above reusable: both splits reach it through
+#     `ops: !ref:preprocess`, and `!ref:` resolves against the MERGED document, so one override moves
+#     train and validation together and they cannot drift.
+#
+#     **The scaling is the step to keep.** Without it the images stay uint8 in [0, 255] while
+#     `data_range: 1.0` still says otherwise, and the run reports `psnr: -27` and `mse: 548` (hit
+#     for real). Here a `Normalize` with `std: 1` and `max_pixel_value: 255` does the scaling — and
+#     it goes ABOVE the copy, so BOTH halves inherit it. Every engine then has its targets in [0, 1]
+#     and one `data_range` is true for all of them.
+#
+#     A consequence worth knowing: `GaussNoise` now runs on FLOAT data rather than uint8, where
+#     albumentations reads `std_range` against a max of 1.0 instead of 255 — so the same
+#     `[0.1, 0.1]` means the same sigma either way (measured: 0.0992 realised, against the torch
+#     chain's 0.0993).
+#
+# (2) **The model is the shared spec, not the zoo.** deepinv is torch-ONLY, so there is no Keras
+#     restoration zoo to wrap — which is exactly why `distilaide/dncnn/` exists. `KerasDnCNN` is the
+#     same 57,635-parameter network as `TorchDnCNN`, so what this block compares is the FRAMEWORK.
+#
+# The metrics stay unset: `initialize()` picks PSNR + MSE. Note SSIM is ABSENT on this engine and
+# that is honest rather than missing — `keras.ops` has a `psnr` and no `ssim`, and the only SSIM
+# implementations are engine-specific, so wiring one would make `--framework tensorflow` compute a
+# metric `--framework keras` cannot from the same config.
+keras: !scope:framework=keras
+  runnable: !class:distilaide.KerasRestorer
+  model: !lazy:distilaide.KerasDnCNN
+    input_shape: [192, 192, 3]
+  preprocess:
+    - !class:recordstream.ops.image.ConvertToImage
+      field: image
+      width: 192
+      height: 192
+      colormap: gray
+    # uint8 [0, 255] -> float32 [0, 1], ABOVE the copy so both halves inherit it. `std: 1` and
+    # `mean: 0` make this a pure rescale — the same /255 the torch chain's `Scale` does.
+    - !class:albumentations.Normalize
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+      max_pixel_value: 255.0
+    - !class:recordstream.ops.structure.CopyField
+      src: image
+      dst: target
+    # Wrapped in a `Compose` ONLY to carry `seed:`, which is the only place albumentations accepts
+    # one — a bare transform builds its own RNG from OS entropy and warns that `seed` is not a valid
+    # argument (measured). Two fresh seeded Composes draw identically; ONE Compose called twice does
+    # not, which is what a per-record stream needs.
+    - !class:albumentations.Compose
+      seed: 0
+      transforms:
+        - !class:albumentations.GaussNoise
+          std_range: [0.1, 0.1]
+          mean_range: [0.0, 0.0]
+          per_channel: true
+          p: 1.0
+  # The shared `val_metrics:` below is a torchmetrics TEMPLATE MAPPING, which `compile()` cannot
+  # consume — and MS-SSIM has no Keras equivalent to substitute. `null` restores the SENTINEL
+  # (meaning "not chosen"), which is not the same as an empty list.
+  val_metrics: null
+
+# --- tensorflow: the same channels-last data, a native loop -----------------
+# The fair question this block answers: why, when `KERAS_BACKEND=tensorflow distilaide train
+# --framework keras` already runs the identical config? Because `tf.data`, `tf.GradientTape` under
+# `@tf.function` (which is what makes `jit_compile` a knob at all) and the SavedModel export are
+# TensorFlow's and not Keras's. Everything else — the data, the losses, the metrics — IS Keras 3,
+# which is also why `--framework tensorflow` imports distilaide.keras_restoration and there is no
+# second loss module.
+#
+# `TensorFlowDnCNN` is the same 57,635-parameter spec again in raw `tf.nn` ops — no Keras layers at
+# all — so this backend's model is TF-native the way its loop is. Swap in `!lazy:distilaide.KerasDnCNN`
+# to keep the loop and change only the model.
+tensorflow: !scope:framework=tensorflow
+  runnable: !class:distilaide.TensorFlowRestorer
+    # TensorFlow-only knobs, none of which the other backends have an equivalent for.
+    jit_compile: false             # XLA on the step functions
+    prefetch: true                 # tf.data's AUTOTUNE overlap
+    # export_dir: ./runs/exported/dncnn_denoising   # a SavedModel, written after fit()
+  model: !lazy:distilaide.TensorFlowDnCNN
+    input_shape: [192, 192, 3]
+  preprocess:
+    - !class:recordstream.ops.image.ConvertToImage
+      field: image
+      width: 192
+      height: 192
+      colormap: gray
+    - !class:albumentations.Normalize
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+      max_pixel_value: 255.0
+    - !class:recordstream.ops.structure.CopyField
+      src: image
+      dst: target
+    # Wrapped in a `Compose` ONLY to carry `seed:`, which is the only place albumentations accepts
+    # one — a bare transform builds its own RNG from OS entropy and warns that `seed` is not a valid
+    # argument (measured). Two fresh seeded Composes draw identically; ONE Compose called twice does
+    # not, which is what a per-record stream needs.
+    - !class:albumentations.Compose
+      seed: 0
+      transforms:
+        - !class:albumentations.GaussNoise
+          std_range: [0.1, 0.1]
+          mean_range: [0.0, 0.0]
+          per_channel: true
+          p: 1.0
+  val_metrics: null
+
+
+# --- jax: the loop written out, and jitted ----------------------------------
+# The closest sibling of the tensorflow block: both replace `fit()` with a traced step function,
+# and the differences between them are the differences between the two programming models.
+# `nnx.value_and_grad` differentiates a PURE FUNCTION of (model, batch); `nnx.Optimizer` applies
+# the update in place; the whole thing is jitted ONCE and reused, because a fresh `jit` per epoch
+# retraces the graph every time and ends up slower than the eager loop it replaced.
+#
+# Channels-LAST like keras/tensorflow, so the same shortened preprocess chain.
+#
+# Losses and the optimizer are NAMES, not `!class:` tags: optax ships plain FUNCTIONS and
+# factories, so there is no class for a tag to resolve. That is also why `--framework jax` imports
+# no registrations module at all.
+#
+# The METRICS are names too, and they come from matrainer's framework-free accumulator — JAX ships
+# no image metrics, and a loop that owns its epochs must not average PSNR per batch (see
+# `docs/architecture.md` record 4).
+jax: !scope:framework=jax
+  runnable: !class:distilaide.JaxRestorer
+    learning_rate: 0.001
+    jit: true                       # turn OFF to read a traceback from inside a step
+  model: !lazy:distilaide.FlaxDnCNN
+    input_shape: [192, 192, 3]
+  preprocess:
+    - !class:recordstream.ops.image.ConvertToImage
+      field: image
+      width: 192
+      height: 192
+      colormap: gray
+    - !class:albumentations.Normalize
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+      max_pixel_value: 255.0
+    - !class:recordstream.ops.structure.CopyField
+      src: image
+      dst: target
+    # Wrapped in a `Compose` ONLY to carry `seed:`, which is the only place albumentations accepts
+    # one — a bare transform builds its own RNG from OS entropy and warns that `seed` is not a valid
+    # argument (measured). Two fresh seeded Composes draw identically; ONE Compose called twice does
+    # not, which is what a per-record stream needs.
+    - !class:albumentations.Compose
+      seed: 0
+      transforms:
+        - !class:albumentations.GaussNoise
+          std_range: [0.1, 0.1]
+          mean_range: [0.0, 0.0]
+          per_channel: true
+          p: 1.0
+  val_metrics: null
+
+# --- mlx: Apple silicon, unified memory -------------------------------------
+# The only backend whose batch path does genuinely LESS than the others: CPU and GPU share memory,
+# so there is no device transfer anywhere. What it costs instead is `mx.eval` — MLX arrays are LAZY,
+# and omitting the eval does not raise, it grows the graph until memory runs out.
+#
+# `MlxDnCNN` is the fifth implementation of the shared spec, and the fifth to report 57,635
+# parameters. Note the optimizer is a CLASS name here where the jax block names an optax FACTORY:
+# `mlx.optimizers` ships classes, so this backend instantiates where the JAX one calls.
+mlx: !scope:framework=mlx
+  runnable: !class:distilaide.MlxRestorer
+    learning_rate: 0.001
+    optimizer: Adam                 # a NAME: mlx.optimizers ships CLASSES (optax ships factories)
+  model: !lazy:distilaide.MlxDnCNN
+    input_shape: [192, 192, 3]
+  preprocess:
+    - !class:recordstream.ops.image.ConvertToImage
+      field: image
+      width: 192
+      height: 192
+      colormap: gray
+    - !class:albumentations.Normalize
+      mean: [0.0, 0.0, 0.0]
+      std: [1.0, 1.0, 1.0]
+      max_pixel_value: 255.0
+    - !class:recordstream.ops.structure.CopyField
+      src: image
+      dst: target
+    # Wrapped in a `Compose` ONLY to carry `seed:`, which is the only place albumentations accepts
+    # one — a bare transform builds its own RNG from OS entropy and warns that `seed` is not a valid
+    # argument (measured). Two fresh seeded Composes draw identically; ONE Compose called twice does
+    # not, which is what a per-record stream needs.
+    - !class:albumentations.Compose
+      seed: 0
+      transforms:
+        - !class:albumentations.GaussNoise
+          std_range: [0.1, 0.1]
+          mean_range: [0.0, 0.0]
+          per_channel: true
+          p: 1.0
+  val_metrics: null
+
+# --- huggingface: hand the whole training PROGRAM over --------------------
+# `transformers.Trainer` owns the epoch, the optimizer, the scheduler, gradient accumulation, mixed
+# precision and distribution. What distilaide supplies is the data, the loss, the run identity and
+# the artifacts — which is the least code of any backend here.
+#
+# TWO things make this backend different from its siblings in the other tasks, and both are
+# measured facts about transformers rather than choices:
+#
+# (1) **It needs a loss, where the others must not have one.** A classification or segmentation
+#     `AutoModelFor…` handed `labels=` computes its own; Swin2SR raises
+#     *"NotImplementedError: Training is not supported at the moment"*. So the runnable ships a
+#     `Trainer` subclass that pops the target and applies `loss_fn` itself, and `--framework
+#     huggingface` imports the TORCH loss module (a `torch.nn` loss does not care which loop calls
+#     it).
+#
+# (2) **It trains from scratch.** Swin2SR is the ONLY image-to-image architecture in transformers
+#     5.x, and every published checkpoint UPSCALES (x2 / x4) — none does the same-size restoration
+#     a denoising run needs. `upscale: 1` with an empty upsampler is the architecture's own
+#     denoising configuration. To fine-tune the real weights instead, set `pretrained: true` with
+#     `upscale: 2` AND change this block's degradation to a downsample — it is then a
+#     super-resolution run, and its number does not belong in the same column as the others.
+#
+# It keeps the TOP-LEVEL preprocess chain: transformers is torch, so it wants the same CHW float
+# tensors the lightning/torch/fastai blocks use.
+huggingface: !scope:framework=huggingface
+  runnable: !class:distilaide.HuggingFaceRestorer
+    learning_rate: 0.0002
+  model: !lazy:distilaide.HuggingFaceRestorationModel
+    upscale: 1          # same-size restoration — see (2) above
+    embed_dim: 60
+    depths: [4, 4]
+    num_heads: [4, 4]
+  # A Trainer's `compute_metrics` is an EVALUATION hook, so this backend has `val_metrics` and
+  # `test_metrics` but deliberately NO `train_metrics` — honouring one would cost a second forward
+  # pass over the whole train split every epoch.
+  val_metrics: null
+
+# ---------------------------------------------------------------------------
+# Metrics — the shared set, plus one that only validation computes
+# ---------------------------------------------------------------------------
+# `metrics:` is what EVERY split measures; `<split>_metrics:` is what that split measures on top,
+# merged over the shared set BY NAME (so a split adds to it rather than restating it, and a
+# same-named entry overrides).
+#
+# Left unset, `metrics:` defaults to PSNR + SSIM sized from `data_range`. `val_metrics:` below adds
+# the multi-scale SSIM on VALIDATION only, because it is the expensive one: MS-SSIM builds an image
+# pyramid per pair, so paying for it on every training batch buys a number nobody reads.
+#
+# Every metric here is a `!lazy:` TEMPLATE, not an instance, and that is what lets `data_range` be
+# injected into it — an eagerly-built `!class:...()` would have to restate the range itself, giving
+# the config two places to disagree about one scale.
+#
+# It is also what sets the 192 px raster above: MS-SSIM's pyramid depth is its `betas` count, and
+# the minimum image size for this kernel is >160 px at the default five, >90 at four, >40 at three
+# (measured). Trimming `betas` instead of raising the raster is the other way round — but note it
+# cannot be written in YAML, because torchmetrics type-checks `betas` for a TUPLE and a YAML
+# sequence arrives as a list (*"Argument `betas` is expected to be of a type tuple"*, hit for real).
+val_metrics:
+  ms_ssim: !lazy:torchmetrics.image.MultiScaleStructuralSimilarityIndexMeasure
+
+# ---------------------------------------------------------------------------
+# Where the results go
+# ---------------------------------------------------------------------------
+# `trackers:` is the whole of a run's output wiring — there is no `logger:` slot. Each tracker IS a
+# metric sink (adapted to Lightning's logger interface), and also receives the git provenance, the
+# resolved config and the run manifest.
+#
+# trackers:
+#   - !class:matrainer.MlflowTracker
+#     experiment_name: gaussian_denoising
+#   - !class:matrainer.TensorBoardTracker

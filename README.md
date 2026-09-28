@@ -1,87 +1,51 @@
 # Distilaide
 
-(logflow / confluid / liquifai) adapter over four denoising libraries — AI and classical — exposed through one `denoise()` dispatcher and one Confluid-`@configurable` `Denoiser`.
-
-| Backend | Domain | Methods | Extra |
-|---|---|---|---|
-| [`bm3d`](https://pypi.org/project/bm3d/) | Classical Gaussian image denoising | `bm3d` | `[classical]` |
-| [`noisereduce`](https://pypi.org/project/noisereduce/) | Classical spectral-gating audio denoising | `noisereduce`, `spectral-gate` | `[classical]` |
-| [`deepinv`](https://deepinv.github.io/) | Pretrained CNN/Transformer image denoisers | `dncnn`, `drunet`, `swinir`, `scunet`, `restormer` | `[deepinv]` |
-| [`asteroid`](https://asteroid-team.github.io/) | Pretrained speech enhancement / source separation | `dccrn`, `dcunet`, `convtasnet`, `demucs` | `[asteroid]` |
-
-Distilaide is **not** a denoiser. It's a thin glue layer (~250 lines of code) over four upstream packages that already do the work, with logflow logging, Confluid YAML config, and the same liquifai CLI conventions as the rest of the workspace.
-
-## The denoising landscape
-
-Distilaide ships method wrappers for the architectures highlighted **in bold**. Everything else listed below is a known, useful technique for context — pick the right baseline before reaching for a model.
-
-### Image denoising (CNN era)
-
-| Architecture | Year | Notes | Wrapped |
-|---|---|---|---|
-| **DnCNN** (Zhang et al.) | 2016 | Residual learning for Gaussian denoising — canonical baseline. | ✅ `dncnn` (deepinv) |
-| REDNet | 2016 | Residual encoder–decoder. | — |
-| MemNet | 2017 | Persistent-memory recurrent net. | — |
-| FFDNet | 2018 | Noise-level-map conditioned, fast. | — |
-| CBDNet | 2019 | Blind real-noise denoising. | — |
-| RIDNet | 2019 | Real image denoising, attention-based. | — |
-| N3Net / NLRN | 2018 | Non-local neural denoising. | — |
-| MIRNet / MIRNetV2 | 2020 / 2022 | Multi-scale residual. | — |
-| MPRNet | 2021 | Multi-stage progressive restoration. | — |
-| HINet | 2021 | Half-instance-norm restoration. | — |
-| **DRUNet** (Zhang) | 2021 | Deep residual U-Net — plug-and-play prior workhorse. | ✅ `drunet` (deepinv) |
-
-### Image denoising (Transformer era)
-
-| Architecture | Year | Notes | Wrapped |
-|---|---|---|---|
-| **SwinIR** (Liang et al.) | 2021 | Swin transformer for restoration. | ✅ `swinir` (deepinv) |
-| Uformer | 2022 | U-shaped transformer. | — |
-| **Restormer** (Zamir et al.) | 2022 | Efficient high-res restoration transformer. | ✅ `restormer` (deepinv) |
-| **NAFNet** | 2022 | Nonlinear-activation-free net, SOTA on SIDD/GoPro. | — (planned) |
-| **SCUNet** (Zhang) | 2022 | Swin-Conv-UNet, real-image denoising. | ✅ `scunet` (deepinv) |
-| MAXIM / GRL | 2022–2023 | More recent restoration backbones. | — |
-| UNet (DDPM/DDIM) | 2020+ | The diffusion-model workhorse, used as a denoiser via score matching. | — (planned `[diffusion]` extra) |
-
-### Audio / speech / spectrogram denoising
-
-| Architecture | Notes | Wrapped |
-|---|---|---|
-| Wave-U-Net | Time-domain U-Net for audio. | — |
-| **DCUNet** | Deep Complex U-Net, speech enhancement. | ✅ `dcunet` (asteroid) |
-| **DCCRN** | Deep Complex Convolution-Recurrent, speech enhancement. | ✅ `dccrn` (asteroid) |
-| **ConvTasNet** | Time-domain mask network, source separation. | ✅ `convtasnet` (asteroid) |
-| **Demucs / HT-Demucs** | Meta's source separation, often used as denoiser. | ✅ `demucs` (asteroid) |
-| FullSubNet | Full-band + sub-band fusion SE. | — |
-| DeepFilterNet | Efficient real-time deep-filtering SE. | — |
-| CMGAN, MetricGAN+, SEGAN | GAN-based speech enhancement. | — |
-
-### Classical baselines (non-AI)
-
-| Method | Domain | Notes | Wrapped |
-|---|---|---|---|
-| **BM3D** | Image | Block-matching 3D — still a strong baseline at low SNR. | ✅ `bm3d` |
-| **noisereduce / spectral gating** | Audio | Spectral subtraction with adaptive thresholding. | ✅ `noisereduce`, `spectral-gate` |
-| Non-local means (NLM) | Image | Patch similarity averaging. | — (use `skimage.restoration.denoise_nl_means`) |
-| Wavelet shrinkage | Image / signal | Frequency-domain thresholding. | — (use `skimage.restoration`) |
-| Wiener filter | Signal | MMSE-optimal LTI filter under known PSDs. | — (use `scipy.signal`) |
-| Total Variation (TV) | Image | Edge-preserving smoothness prior. | — (use `skimage.restoration`) |
-
-Anything not yet wrapped that you need — file an issue or drop in a `<name>_backend.py` (the registry pattern in `distilaide.api` is intentionally one-file-to-add).
-
-## Installation
+Image restoration — **image → image** — across training backends, driven by one config.
 
 ```bash
-pip install git+https://github.com/Gearlux/distilaide.git@main
+distilaide train    examples/train_dncnn_denoising.yaml
+distilaide train    examples/train_dncnn_denoising.yaml --framework torch
+distilaide evaluate examples/train_dncnn_denoising.yaml
 ```
 
-Backends are optional extras — install only what you need:
+The canonical task is **Gaussian denoising**: learn to map a noisy image back to the clean one. It is
+the textbook image-to-image problem, and the recipe every classic denoiser was trained under — DnCNN,
+DRUNet and SCUNet all learned from clean photographs with synthetic noise added, because a real noisy
+photograph has no noise-free twin.
+
+| Backend | `--framework` | What it swaps |
+|---|---|---|
+| PyTorch Lightning | `lightning` (default) | the reference: a `Trainer` owns the epoch |
+| PyTorch | `torch` | **nothing underneath** — the loop is written out (the control experiment) |
+| fastai | `fastai` | a `Learner` with one-cycle scheduling, same torch stack |
+| Keras 3 | `keras` | one API over PyTorch / TensorFlow / JAX (channels-last) |
+| TensorFlow | `tensorflow` | `tf.data` + `GradientTape` under `@tf.function`, SavedModel export |
+| JAX | `jax` | a jitted optax loop over a Flax model, written out in full |
+| MLX | `mlx` | Apple silicon: unified memory, lazy arrays |
+| Transformers | `huggingface` | a `Trainer` owns epoch, optimizer, scheduler, AMP, distribution |
+
+## Install
 
 ```bash
-pip install "git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[classical]"   # bm3d + noisereduce
-pip install "git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[deepinv]"     # CNN/Transformer image denoisers
-pip install "git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[asteroid]"    # speech enhancement
-pip install "git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[all]"         # everything
+pip install distilaide
+```
+
+distilaide is on PyPI as a pre-release; pip installs it without `--pre`, because no final release
+exists yet. Leave `--pre` off: it lets pip take pre-releases of *every* dependency too.
+
+The core is backend-free — you get the CLI and the config surface, and no ML framework. Pick a
+backend:
+
+```bash
+pip install "distilaide[lightning]"
+pip install "distilaide[torch]"
+pip install "distilaide[fastai]"
+pip install "distilaide[keras]"
+pip install "distilaide[tensorflow]"
+pip install "distilaide[jax]"
+pip install "distilaide[mlx]"
+pip install "distilaide[huggingface]"
+pip install "distilaide[bm3d]"   # + the BM3D baseline
 ```
 
 ### Development
@@ -89,128 +53,342 @@ pip install "git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[a
 ```bash
 git clone https://github.com/Gearlux/distilaide.git
 cd distilaide
-pip install -e ".[dev,classical]"     # core + classical backends + dev tools
+pip install -e ".[dev,lightning]"
 ```
 
-## Architecture
+## The degradation IS the task
 
-```
-   YAML (Confluid)         dispatch              upstream library
-   ┌──────────────┐    ┌──────────────────┐    ┌──────────────────────┐
-   │ denoiser:    │───▶│  Denoiser        │───▶│ bm3d.bm3d            │
-   │   method:..  │    │  api.denoise()   │    │ noisereduce.reduce_  │
-   │   sigma:..   │    │  registry        │    │ deepinv.models.*     │
-   │ input:       │    └──────────────────┘    │ asteroid.BaseModel   │
-   │ output:      │            │                └──────────────────────┘
-   └──────────────┘            │
-            ▲                  ▼
-       liquifai CLI       logflow logger
-```
-
-Each backend lives in a single `<name>_backend.py` exposing three things:
-
-```python
-METHODS: tuple[str, ...]                 # method names this backend serves
-def is_available() -> bool: ...          # whether the upstream lib is importable
-def denoise(signal, method, **kw): ...   # the actual call
-```
-
-The dispatcher in `distilaide.api` builds a `method → backend` registry at import and forwards calls. Upstream libraries are imported lazily, so the package works with any subset of the optional extras installed.
-
-## Quick start
-
-### From Python
-
-```python
-import numpy as np
-from distilaide import denoise, list_methods
-
-print(list_methods(only_available=True))    # which backends are installed?
-
-noisy = np.random.uniform(0, 1, (256, 256)).astype(np.float32)
-clean = denoise(noisy, method="bm3d", sigma=0.05)              # classical
-clean = denoise(noisy, method="dncnn")                          # pretrained CNN
-clean = denoise(noisy, method="swinir")                         # pretrained transformer
-```
-
-For audio:
-
-```python
-from distilaide import denoise
-
-speech = ...  # 1D float32 array at 16 kHz
-clean = denoise(speech, method="noisereduce", sample_rate=16000)   # classical
-clean = denoise(speech, method="dccrn")                             # pretrained CRN
-```
-
-### From a Confluid YAML
+There is no paired noisy/clean dataset here, and that is the design rather than a shortcut. A
+denoising pair is **made, not found**: the clean image is the only ground truth that exists, so the
+target is derived from the input by three ops in the config.
 
 ```yaml
-# examples/denoise_bm3d.yaml
-denoiser: !class:distilaide.Denoiser
-  method: bm3d
-  sigma: 0.05
+noise_sigma: 0.1          # sigma 25 on the 0-255 scale the literature quotes
 
-input: examples/data/noisy_image.npy
-output: out/clean_image.npy
+preprocess:
+  - !class:recordstream.ops.image.ConvertToImage      # 1. resize — BOTH halves inherit this
+    field: image
+    width: 192
+    height: 192
+
+  - !class:recordstream.ops.structure.CopyField       # 2. the clean copy = the target
+    src: image
+    dst: target
+
+  - !class:albumentations.GaussNoise                  # 3. degrade the INPUT only
+    std_range: [0.1, 0.1]
+    p: 1.0
+
+  - !class:recordstream.ops.numpy.Scale {}           # 4. both halves uint8 -> float in [0, 1]
+  - !class:recordstream.ops.torch.ToTensor            # 5+6. both halves to CHW
+    field: image
+  - !class:recordstream.ops.torch.ToTensor
+    field: target
+```
+
+Two consequences worth knowing:
+
+**The dataset is interchangeable.** What makes this a denoising run is `noise_sigma`, not the source.
+The example uses Oxford-IIIT Pet because it is natural photography and it is small;
+[`deepinv/CBSD68`](https://huggingface.co/datasets/deepinv/CBSD68) (68 images) is the canonical colour
+denoising *benchmark* and is what you want as a `test_set` for a number you intend to publish.
+
+**Order matters, and getting it wrong is silent.** A bare albumentations transform only ever receives
+albumentations' own keys (`image`, `mask`, `bboxes`, …), so it cannot see `target`. Everything that
+must reach both halves goes **above** the copy; everything that degrades the input goes **below** it.
+A resize placed after the copy shrinks the input and leaves the target at its original size —
+unpairing every record while still producing a perfectly valid-looking batch.
+
+## Models — learned and classical, one slot
+
+`DeepInvModel` wraps [deepinv](https://deepinv.github.io/)'s restoration zoo. `arch:` is the whole
+difference between them:
+
+| `arch` | Kind | Notes |
+|---|---|---|
+| `dncnn` | learned | The canonical baseline. Residual CNN, blind (ignores `sigma`). |
+| `drunet` | learned | Deep residual U-Net, the plug-and-play workhorse. **Needs `sigma`.** |
+| `scunet` | learned | Swin-Conv-UNet, real-image denoising. |
+| `swinir` | learned | Swin transformer for restoration. |
+| `restormer` | learned | Efficient high-res restoration transformer. |
+| `ffdnet` | learned | Noise-level-map conditioned, fast. No published weights in deepinv. |
+| `unet` | learned | Plain U-Net. |
+| `srresnet` | learned | SRResNet. |
+| `bm3d` | **classical** | Block-matching 3D — still a strong baseline. Needs `distilaide[bm3d]`. |
+| `tv` / `tgv` | **classical** | Total / total-generalized variation. **Need `sigma`.** |
+| `wavelet` | **classical** | Wavelet shrinkage (needs deepinv's `ptwt`). |
+| `median` / `bilateral` | **classical** | Fixed filters. |
+
+The classical entries have **zero parameters**. They live in the same `model:` slot on purpose: it
+means `distilaide evaluate` scores BM3D and a trained DnCNN through the same PSNR/SSIM path, on the
+same data, into the same tracker — which is the comparison anyone choosing a denoiser actually wants.
+
+```yaml
+# score a classical baseline — a complete run that trains nothing
+runnable: !class:distilaide.LightningRestorer
+model: !lazy:distilaide.DeepInvModel
+  arch: bm3d
+  sigma: 0.1
 ```
 
 ```bash
-distilaide denoise examples/denoise_bm3d.yaml
+distilaide evaluate baseline.yaml
 ```
+
+Asking one to **train** is refused by name, pointing at `evaluate` — because torch's own complaint
+("optimizer got an empty parameter list") lands several frames from the `arch:` line that caused it.
+
+`pretrained` defaults to `None`, so a bare `arch: dncnn` **trains from scratch**. That deliberately
+differs from deepinv's own default: a training project should not silently start from somebody else's
+weights. Add `pretrained: download` to fine-tune from the published ones.
+
+## Losses and metrics
+
+Both are off-the-shelf upstream classes, registered for discovery rather than wrapped.
+
+**Losses** (`torch.nn`): `L1Loss` (the default), `MSELoss`, `SmoothL1Loss`, `HuberLoss`.
+
+L1 rather than MSE is not arbitrary — DnCNN's 2016 paper used MSE, but every modern restoration
+network (Restormer, NAFNet, MPRNet) reports L1 doing better on the same data, because MSE's quadratic
+penalty is dominated by a few large errors and yields visibly blurrier output at a comparable PSNR.
+Reproducing the original recipe is one line:
+
+```yaml
+loss_fn: !class:MSELoss@framework=torch
+```
+
+**Metrics** (`torchmetrics.image`): `PeakSignalNoiseRatio` and `StructuralSimilarityIndexMeasure` are
+the defaults, with `MultiScaleStructuralSimilarityIndexMeasure`,
+`ErrorRelativeGlobalDimensionlessSynthesis`, `RootMeanSquaredErrorUsingSlidingWindow`,
+`SpectralAngleMapper` and `UniversalImageQualityIndex` registered alongside.
+
+### `data_range` — the one knob you must not get wrong
+
+Every full-reference image metric is defined relative to the span of the target's values. Set it once,
+at the top level, and the restorer injects it into every metric template:
+
+```yaml
+data_range: 1.0     # Scale produces [0, 1]; raw uint8 would be 255.0
+```
+
+It is not a formality. Measured on one batch of `[0, 1]` images: PSNR reports **20.46 dB** at
+`data_range=1.0` and **68.59 dB** at `255.0` — the same tensors, scored as if the model were nearly
+perfect. torchmetrics makes it a *required* argument of `PeakSignalNoiseRatio` for exactly this
+reason, which is why metrics are wired as `!lazy:` templates: a template receives the run's value,
+where an eagerly-built instance would have to restate it and give the config two places to disagree.
+
+### Per-split metrics
+
+`metrics:` is what every split measures; `val_metrics:` is what validation measures on top.
+
+```yaml
+val_metrics:
+  ms_ssim: !lazy:torchmetrics.image.MultiScaleStructuralSimilarityIndexMeasure
+```
+
+MS-SSIM on validation only, because it builds an image pyramid per pair. Note it also constrains your
+raster: its default five-scale pyramid needs images **larger than 160 px** (>90 at four scales, >40 at
+three), so a 128 px run dies during Lightning's sanity check.
+
+## Reading the numbers
+
+A restoration metric is never near zero, so the number that means something is the one against the
+**do-nothing baseline** — what the degraded input already scores.
+
+On the example config (256 training images, sigma 0.1, 5 epochs, everything from scratch), the
+degraded input itself scores **PSNR 20.53 dB / SSIM 0.3719 / MS-SSIM 0.8516**. Every backend against
+that floor:
+
+| `--framework` | model | val PSNR |
+|---|---|---|
+| `huggingface` | Swin2SR | **27.41 dB** |
+| `fastai` | deepinv DnCNN (668K) | 24.4–25.2 |
+| `torch` | deepinv DnCNN (668K) | 22.2–22.9 |
+| `lightning` | deepinv DnCNN (668K) | 21.5–22.5 |
+| `jax` | FlaxDnCNN (the 57K shared spec) | 20.56 |
+| `tensorflow` | TensorFlowDnCNN (spec) | 20.49 |
+| `keras` | KerasDnCNN (spec) | 20.38 |
+| `mlx` | MlxDnCNN (spec) | 20.31 |
+
+**Read that by group, not by rank — the model differs, and that is the design.** The four shared-spec
+backends agree within 0.25 dB, which is exactly what the spec is for (same network, four frameworks,
+so what you are comparing is the framework). The zoo backends do better because a 668K DnCNN beats a
+57K one, and Swin2SR wins because a transformer with a `Trainer`'s schedule beats both. The
+like-for-like comparison — every backend on the SAME network — is what
+[the sweep](#comparing-the-backends--the-sweep) below produces.
+
+The figures above were taken before the config was seeded, so they are ranges. It is seeded now —
+see [Reproducibility](#reproducibility--what-a-seed-actually-has-to-cover) — so a repeat run
+reproduces exactly; treat the gain over the baseline, not the absolute number, as the result.
+
+The epoch-0 row is the sanity check worth keeping: a residual denoiser's cheapest local optimum is
+predicting zero noise, so it reaches approximate identity within one epoch and its first score
+should land on the baseline. A first epoch far from the floor means the pair is wrong — not that the
+model is good. (It is not an *initialization* property — at init the network is nowhere near the
+identity; it gets there by training.)
+
+### Reproducibility — what a seed actually has to cover
+
+The config is **seeded**, and getting there took two knobs rather than one. Measured 2026-08-06,
+two runs of the identical `--framework torch` cell:
+
+| what was seeded | run 1 | run 2 | spread |
+|---|---|---|---|
+| nothing | 22.7530 | 22.5188 | 0.234 dB |
+| the model, saving+restoring the RNG | 22.1891 | 21.9956 | 0.193 dB |
+| the model, leaving the RNG seeded | 22.1058 | 22.1707 | 0.065 dB |
+| **the model + the degradation** | **22.1886** | **22.1886** | **0.000** |
+
+**Neither knob is sufficient alone, and the middle row is why.** Every model wrapper takes
+`seed:`, which calls `torch.manual_seed` when the network is built and does *not* restore the
+previous state — so it seeds the loader's shuffle order too. That leak is the point: a
+save-and-restore version was written first, and it produced a reproducible *model* inside a run
+that still was not reproducible.
+
+The remaining piece is the degradation. A **bare** albumentations transform builds its own RNG from
+OS entropy and refuses a `seed` argument outright (*"Argument(s) 'seed' are not valid for transform
+GaussNoise"*), so the noise is wrapped in a one-element `Compose`, which is the only place the
+library accepts one:
+
+```yaml
+- !class:albumentations.Compose
+  seed: 0
+  transforms:
+    - !class:albumentations.GaussNoise
+      std_range: [0.1, 0.1]
+      p: 1.0
+```
+
+Two *fresh* seeded `Compose` objects draw identically; one `Compose` called twice does not — which
+is exactly right for a per-record stream, and is what makes a whole run reproduce rather than every
+record getting the same noise.
+
+### Comparing the backends — the sweep
+
+The table above mixes two model sizes, so it reads as a ranking when it is really two groups. The
+sweep is what makes the like-for-like comparison reproducible: it trains **every installed backend**
+into one tracker, the three torch ones twice — once on the deepinv zoo wrapper and once on the
+shared 57,635-parameter DnCNN spec — so a column compares *frameworks* rather than networks.
+
+```bash
+examples/sweep/run_sweep.sh --epochs 5                   # every installed backend, into MLflow
+examples/sweep/run_sweep.sh --tracker csv --epochs 5      # ...into the always-available CSV backend
+examples/sweep/run_sweep.sh --only jax,mlx --dry-run      # print the commands, run nothing
+```
+
+Eleven cells, and the two gaps are structural rather than unfinished:
+
+| `--framework` | zoo model | `--model dncnn` |
+|---|---|---|
+| `lightning` / `torch` / `fastai` | `DeepInvModel` (668K) | `TorchDnCNN` (57,635) |
+| `keras` | — | `KerasDnCNN` |
+| `tensorflow` | — | `TensorFlowDnCNN` |
+| `jax` | — | `FlaxDnCNN` |
+| `mlx` | — | `MlxDnCNN` |
+| `huggingface` | Swin2SR | — |
+
+There is **no non-torch restoration zoo to wrap** — deepinv is torch-only, which is exactly why the
+shared spec exists. And **`huggingface` takes no `dncnn`**: not because of the loss (this backend
+supplies its own), but because a `Trainer`'s *evaluation* path calls `model(**inputs)`, so a model
+must accept `pixel_values=` as a keyword. `TorchDnCNN.forward(images)` does not — it trains fine and
+dies on the first eval — and teaching the shared spec one framework's keyword names would defeat the
+point of a class whose job is to be the same network in five of them.
+
+`--model dncnn` also works on the plain example, with no sweep involved:
+
+```bash
+distilaide train examples/train_dncnn_denoising.yaml --framework torch --model dncnn
+```
+
+The report is `matrainer`'s, since naming an experiment and reading it back are queries against a
+tracker rather than anything restoration knows about:
+
+```bash
+python -m matrainer.sweep report csv Thu_Aug_6_2026_1 --all
+```
+
+Verified 2026-08-06 against MLflow, `--tracker mlflow --epochs 5` — **11/11 FINISHED**, every row
+carrying `val/psnr`, `val/mse` and `val/loss`, with the config seeded:
+
+| run | val PSNR | val MSE | train PSNR | sec |
+|---|---|---|---|---|
+| `huggingface_zoo` | **27.1698** | 0.0019 | *(see below)* | 250 |
+| `fastai_zoo` | 24.7319 | 0.0034 | 24.7259 | 25 |
+| `torch_zoo` | 22.1886 | 0.0060 | 21.9302 | 37 |
+| `lightning_zoo` | 22.1836 | 0.0060 | 21.9417 | 80 |
+| `fastai_dncnn` | 21.4821 | 0.0071 | 21.4473 | 6 |
+| `torch_dncnn` | 20.7328 | 0.0084 | 20.6109 | 19 |
+| `lightning_dncnn` | 20.7023 | 0.0085 | 20.5884 | 61 |
+| `jax_dncnn` | 20.6757 | 0.0086 | 21.2558 | 38 |
+| `tensorflow_dncnn` | 20.4879 | 0.0089 | 21.1441 | 40 |
+| `keras_dncnn` | 20.4558 | 0.0090 | 20.7653 | 60 |
+| `mlx_dncnn` | 20.3854 | 0.0092 | 20.3954 | 17 |
+
+**The two numbers worth reading are not the top of the table.**
+
+`torch_zoo` **22.1886** against `lightning_zoo` **22.1836** — a hand-written loop and a
+`pl.Trainer`, same config, same network, **0.005 dB apart**. That is the project's whole claim,
+executed. (`torch_dncnn` / `lightning_dncnn` agree to 0.03 dB on the smaller network.)
+
+And `torch_zoo`'s 22.1886 is the *third* time that exact figure has appeared — the two seeding
+probes above produced it as well, in a different tracker and a different sweep. That is what a
+seeded config buys.
+
+The five `*_dncnn` rows span **20.39 – 20.73 dB**, i.e. a third of a dB across five frameworks
+running the same 57,635-parameter network — which is what the shared spec exists to demonstrate.
+`fastai_dncnn` sits above them at 21.48 on the same network, and that difference is the *loop*
+(one-cycle scheduling), which is exactly the kind of thing a sweep is for.
+
+The `sec` column is MLflow's, not the CSV backend's — a file-backed tracker records no run
+lifecycle, so `--tracker csv` leaves `status` and `sec` empty.
+
+The one blank cell is `huggingface`'s training columns, and it is declared rather than missing: a
+`Trainer`'s `compute_metrics` is an **evaluation** hook, so a training metric would cost a second
+forward pass over the whole train split every epoch.
+
+**One caveat worth knowing before you run it.** `--epochs 1` is a smoke test, not a comparison: the
+`*DnCNN` rows train from scratch, and a residual denoiser spends its first pass converging *toward*
+the identity — measured, one epoch of `--framework tensorflow` lands at 8.0 dB, well under the
+20.5 dB do-nothing floor. Use `--epochs 5`.
 
 ## CLI reference
 
 | Command | Purpose |
 |---|---|
-| `distilaide list-methods` | Print every registered method and whether its backend is installed. |
-| `distilaide denoise <yaml>` | Apply the configured `denoiser:` to `input:` and write to `output:`. |
+| `distilaide train <yaml>` | Train (`task=fit`). |
+| `distilaide evaluate <yaml>` | Score a model — learned or classical — over the test set. |
+| `distilaide predict <yaml>` | Stream restored images to the configured sink. |
+| `distilaide frameworks` | List the backends `--framework` accepts. |
 
-The CLI inherits Confluid's dotted-key overrides:
-
-```bash
-distilaide denoise cfg.yaml denoiser.sigma=0.1
-```
+`recordstream run <yaml>` also works — the generic runner, with no verb, using whatever `task:` the
+YAML declares.
 
 ## What's in the package
 
 | Module | Purpose |
 |---|---|
-| `distilaide.api.denoise` | Single dispatch entry point. |
-| `distilaide.api.Denoiser` | Confluid-`@configurable` callable wrapper. |
-| `distilaide.api.list_methods` | Inspect the method registry + availability. |
-| `distilaide.bm3d_backend` | BM3D classical Gaussian image denoiser. |
-| `distilaide.noisereduce_backend` | noisereduce classical spectral gating. |
-| `distilaide.deepinv_backend` | DnCNN / DRUNet / SwinIR / SCUNet / Restormer. |
-| `distilaide.asteroid_backend` | DCCRN / DCUNet / ConvTasNet / Demucs. |
-| `distilaide.cli` | `list-methods`, `denoise` |
-
-That's it. Six files plus a CLI. Backends are added by dropping a `<name>_backend.py` and registering it in `distilaide.api._BACKEND_MODULES`.
-
-## Why a thin adapter?
-
-The denoising landscape is well-served by mature upstream packages — `deepinv` for image priors, `asteroid` for speech, `bm3d`/`noisereduce` for the classical baselines that are still the right call at low SNR. There's no value in re-implementing them.
-
-What distilaide adds:
-
-- One Python entry point (`denoise(signal, method=...)`) instead of four library APIs.
-- One Confluid YAML knob (`!class:distilaide.Denoiser`) for use inside DataFlux pipelines, marainer training loops, or any other config.
-- logflow integration for unified logging across the workspace.
-- liquifai CLI matching the rest of the .
-- Lazy imports so the package itself works with any subset of `[classical]` / `[deepinv]` / `[asteroid]` installed.
-
-If you only need one backend, use it directly. If you want to write code that swaps denoisers via config, distilaide is the glue.
+| `distilaide.<engine>_restorer` | One per backend — `lightning` / `torch` / `fastai` / `keras` / `tensorflow` / `jax` / `mlx` / `huggingface`. |
+| `distilaide.deepinv_model` | `DeepInvModel` — the zoo wrapper, learned and classical. |
+| `distilaide.huggingface_model` | `HuggingFaceRestorationModel` — Swin2SR. |
+| `distilaide.dncnn` | The shared DnCNN spec + its five native implementations. |
+| `distilaide.torch_restoration` | The registered torch losses + torchmetrics image metrics. |
+| `distilaide.keras_restoration` | The Keras losses + metrics, and the one PSNR shim. |
+| `distilaide.cli` | `train` / `evaluate` / `predict` / `frameworks`. |
 
 ## Dependencies
 
 | Package | Purpose | Required? |
 |---|---|---|
 | `confluid` | YAML config + `@configurable` | yes |
+| `recordstream` | Dataset engine, ops, collate, prediction contracts | yes |
 | `liquifai` | CLI framework | yes |
-| `logflow` | Structured logging | yes |
-| `numpy` | Array protocol | yes |
-| `bm3d` | BM3D denoiser | optional (`[classical]`) |
-| `noisereduce` | Spectral gating | optional (`[classical]`) |
-| `scipy` | WAV IO for the CLI | optional (`[classical]`) |
-| `deepinv` + `torch` | CNN/Transformer image denoisers | optional (`[deepinv]`) |
-| `asteroid` + `torch` + `torchaudio` | Speech enhancement / separation | optional (`[asteroid]`) |
+| `loggair` | Structured logging | yes |
+| `matrainer` | Experiment tracking | yes |
+| `torch` + `torchmetrics` + `deepinv` + `albumentations` | The model zoo, metrics and degradation | `[torch]` |
+| `pytorch-lightning` | The reference backend | `[lightning]` |
+| `fastai` | The `Learner` backend | `[fastai]` |
+| `keras` (+ an engine) | Keras 3 / TensorFlow backends | `[keras]` / `[tensorflow]` |
+| `jax` + `flax` + `optax` | The JAX backend | `[jax]` |
+| `mlx` | The MLX backend (Apple silicon only) | `[mlx]` |
+| `transformers` + `accelerate` | The Swin2SR backend | `[huggingface]` |
+| `bm3d` | The BM3D classical baseline | `[bm3d]` |

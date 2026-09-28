@@ -184,7 +184,7 @@ class HuggingFaceRestorer(RestorationBase, HuggingFaceRunnable):
 
         loss_fn = cast(nn.Module, flow(self.loss_fn))
 
-        class _RestorationTrainer(HFTrainer):  # type: ignore[misc,valid-type]
+        class _RestorationTrainer(HFTrainer):
             """A ``Trainer`` that computes the loss itself (see the enclosing docstring)."""
 
             def compute_loss(

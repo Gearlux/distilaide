@@ -137,7 +137,7 @@ def test_trackers_is_a_constructor_param(cls: Type[Any]) -> None:
 def test_the_constructor_stores_trackers_verbatim(cls: Type[Any]) -> None:
     """Partial-init: normalizing here would ITERATE, and a deferred ``Fluid`` is not iterable."""
     marker = object()
-    assert cls(model=_tiny_model(), trackers=marker).trackers is marker  # type: ignore[arg-type]
+    assert cls(model=_tiny_model(), trackers=marker).trackers is marker
 
 
 @pytest.mark.parametrize("cls", BACKENDS)

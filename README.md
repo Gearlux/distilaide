@@ -27,22 +27,25 @@ photograph has no noise-free twin.
 ## Install
 
 ```bash
-pip install git+https://github.com/Gearlux/distilaide.git@main
+pip install distilaide
 ```
+
+distilaide is on PyPI as a pre-release; pip installs it without `--pre`, because no final release
+exists yet. Leave `--pre` off: it lets pip take pre-releases of *every* dependency too.
 
 The core is backend-free — you get the CLI and the config surface, and no ML framework. Pick a
 backend:
 
 ```bash
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[lightning]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[torch]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[fastai]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[keras]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[tensorflow]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[jax]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[mlx]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[huggingface]'
-pip install 'git+https://github.com/Gearlux/distilaide.git@main#egg=distilaide[bm3d]'   # + the BM3D baseline
+pip install "distilaide[lightning]"
+pip install "distilaide[torch]"
+pip install "distilaide[fastai]"
+pip install "distilaide[keras]"
+pip install "distilaide[tensorflow]"
+pip install "distilaide[jax]"
+pip install "distilaide[mlx]"
+pip install "distilaide[huggingface]"
+pip install "distilaide[bm3d]"   # + the BM3D baseline
 ```
 
 ### Development

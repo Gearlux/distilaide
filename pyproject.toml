@@ -1,26 +1,55 @@
+[build-system]
+# >=77 for the PEP 639 `license` string + `license-files` below.
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "distilaide"
-version = "0.2.0"
+version = "0.1.0a1"
 description = "Image restoration across training backends, driven by one config (deepinv models)."
-authors = [{name = "Taidal"}]
-license = {text = "MIT"}
+readme = "README.md"
+authors = [{name = "Gert Behiels"}]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Typing :: Typed",
+]
 # The CORE is backend-free: `pip install distilaide` gives the CLI and the config surface only, so
 # a machine that has not chosen a training framework never installs one. Every ML framework lives
 # in the extra of the backend that needs it (see `[project.optional-dependencies]`), and every
 # backend-owned name in `distilaide/__init__.py` resolves lazily to match.
+# Floors are what the suite runs against in a clean venv resolving from PyPI alone (measured
+# 2026-09-28, before the first release). matrainer 0.1.0a1 itself requires confluid>=0.3.1,
+# liquifai>=0.3.0 and loggair>=0.2.0, so the older floors here named combinations nobody
+# could install.
 dependencies = [
-    "confluid>=0.3.0",
+    "confluid>=0.3.1",
     # recordstream ships as a pre-release. Under PEP 440 a plain `>=0.1.0` EXCLUDES every
     # pre-release of 0.1.0, so it would resolve to nothing. 0.1.0a2 is the first release where
     # `ToTensor` only converts — its example scales with `Scale` before `ToTensor`.
     "recordstream>=0.1.0a2",
-    "liquifai>=0.1.0",
-    "loggair>=0.1.0",
+    "liquifai>=0.3.0",
+    "loggair>=0.2.0",
     # matrainer is the TRACKING library (and the metric-slot rule + artifact writers). Its own
     # core install is light — no torch — so it belongs here rather than in a backend extra.
     "matrainer>=0.1.0a1",
 ]
 requires-python = ">=3.12"
+
+[project.urls]
+Homepage = "https://github.com/Gearlux/distilaide"
+Repository = "https://github.com/Gearlux/distilaide.git"
+Issues = "https://github.com/Gearlux/distilaide/issues"
+Changelog = "https://github.com/Gearlux/distilaide/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # One extra per training backend. `aisland framework set torch lightning` installs the ones the
@@ -138,6 +167,10 @@ huggingface = [
 mlflow = ["matrainer[mlflow]>=0.1.0a1"]
 tensorboard = ["matrainer[tensorboard]>=0.1.0a1"]
 dev = [
+    # Release tooling: `python -m build` produces the sdist + wheel, `twine check`
+    # validates the metadata PyPI will re-validate on upload.
+    "build>=1.0.0",
+    "twine>=5.0.0",
     "black>=24.0.0,<25.0.0",
     "isort>=5.13.0,<6.0.0",
     "flake8>=6.0.0,<8.0.0",
@@ -239,6 +272,10 @@ show_error_codes = true
 strict_optional = true
 explicit_package_bases = true
 
+# Optional-extra libraries CI does not install. CI runs `mypy .` HERE with only the extras its
+# install line names, so every module an extra-gated backend imports must be listed, or CI
+# fails on `import-not-found` while the workspace-root run (everything installed) passes —
+# measured 2026-09-28 before the first release. `mlx` cannot be installed on Linux at all.
 [[tool.mypy.overrides]]
 module = [
     "torch.*",
@@ -249,5 +286,9 @@ module = [
     "albumentations.*",
     "fastai.*",
     "fastcore.*",
+    "jax.*",
+    "flax.*",
+    "optax.*",
+    "mlx.*",
 ]
 ignore_missing_imports = true

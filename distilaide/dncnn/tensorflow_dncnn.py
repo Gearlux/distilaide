@@ -177,7 +177,7 @@ class TensorFlowDnCNN(tf.Module):
         return self.model(x, training=training)
 
     @property
-    def trainable_variables(self) -> Any:  # type: ignore[override]
+    def trainable_variables(self) -> Any:
         """The variables an optimizer updates — forwarded from the built module."""
         return self.model.trainable_variables
 

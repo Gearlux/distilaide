@@ -148,7 +148,7 @@ class HuggingFaceRestorationModel(nn.Module):
                 from matrainer.torch import load_lightning_checkpoint
 
                 load_lightning_checkpoint(self, self.checkpoint_path, strict=self.checkpoint_strict)
-        return cast(nn.Module, self.restorer)
+        return self.restorer
 
     @property
     def backbone(self) -> nn.Module:

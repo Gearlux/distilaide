@@ -105,8 +105,8 @@ preprocess:
     field: target
 
 # The dataset exposes `train` and `test` (no `validation`), so the held-out split is `test`. The
-# nested source needs the INSTANCE form — `!class:...()` WITH parens — or `Stream.source` stays a
-# deferred Class marker and iteration raises.
+# nested source is written in the INSTANCE form, `!class:...()` WITH parens; the parens-less
+# `!class:` builds the same source.
 #
 # `count:` caps both splits for a fast smoke run; delete both lines to train on all 3680 / 3669 rows.
 train_set: !class:recordstream.Stream

@@ -62,8 +62,9 @@ preprocess:
   - !class:recordstream.ops.image.ConvertToImage {field: image, width: 192, height: 192}
   - !class:recordstream.ops.structure.CopyField  {src: image, dst: target}
   - !class:albumentations.GaussNoise             {std_range: [0.1, 0.1], p: 1.0}
-  - !class:recordstream.ops.torch.ToTensor       {field: image,  normalize: true}
-  - !class:recordstream.ops.torch.ToTensor       {field: target, normalize: true}
+  - !class:recordstream.ops.numpy.Scale          {}
+  - !class:recordstream.ops.torch.ToTensor       {field: image}
+  - !class:recordstream.ops.torch.ToTensor       {field: target}
 ```
 
 ### What you may change
@@ -74,8 +75,8 @@ a geometric op below the copy unpairs every record while still producing a valid
 
 ### Amendment (2026-09-27): the scaling is an op of its own
 
-recordstream's `ToTensor` now converts HWC → CHW and nothing else, so the `normalize: true` in the
-Example above no longer exists. `data_range: 1.0` (record 2) is only true if BOTH halves are
+recordstream's `ToTensor` converts HWC → CHW and nothing else, so the scaling is an op of its own
+(`Scale` in the Example above). `data_range: 1.0` (record 2) is only true if BOTH halves are
 floats in `[0, 1]`; left as uint8 in `[0, 255]`, a run reports `psnr: -27` and `mse: 548` (hit on
 the first Keras run). The scaling is therefore an explicit op, and it obeys the ordering rule:
 
@@ -408,15 +409,16 @@ But **no non-torch engine ships it**: `keras.metrics` has no image metric at all
 
 ### Decision
 
-Three different answers, one per engine family, chosen by what each ecosystem actually provides:
+Four different answers, one per engine family, chosen by what each ecosystem actually provides:
 
 | family | how PSNR is obtained |
 |---|---|
-| torch (lightning / torch / fastai) | `torchmetrics.image.PeakSignalNoiseRatio` — upstream, registered |
+| torch (lightning / torch) | `torchmetrics.image.PeakSignalNoiseRatio` — upstream, registered |
+| fastai | a **configured alias**, `distilaide.fastai_restorer.PeakSignalNoiseRatio`, holding the shared squared-error accumulator (see the amendment) |
 | Keras (keras / tensorflow) | a **shim** over `keras.ops.psnr`, holding an upstream `MeanSquaredError` |
 | owned loops (jax / mlx / huggingface) | `matrainer.metric_functions` — a shared squared-error accumulator |
 
-All three agree to six decimal places on the same arrays, which is what makes one column called
+All four agree to six decimal places on the same arrays, which is what makes one column called
 `psnr` mean one thing.
 
 ### Consequences
@@ -448,12 +450,11 @@ print(psnr(totals, data_range=1.0))     # one reduction, at the end
 Which metrics a split reports. What you may not do is give one engine a metric another cannot
 compute from the same config, or average PSNR per batch (see record 4).
 
-### Amendment (2026-08-06): fastai is a fourth answer
+### Amendment (2026-08-06): the fastai answer
 
-The table above files fastai under torchmetrics. It is not: a `Learner` takes metrics by NAME from
-`fastai.metrics`, which has `mse` / `mae` / `rmse` / `msle` and nothing scale-aware. That left `psnr`
-as the one blank cell in the sweep's headline column (record 9). The fastai backend closes it with
-a CONFIGURED ALIAS: `distilaide.fastai_restorer.PeakSignalNoiseRatio`, a fastai `Metric` that
+A `Learner` takes metrics by NAME from `fastai.metrics`, which has `mse` / `mae` / `rmse` / `msle`
+and nothing scale-aware. That left `psnr` as the one blank cell in the sweep's headline column
+(record 9). The fastai backend closes it with a CONFIGURED ALIAS: `distilaide.fastai_restorer.PeakSignalNoiseRatio`, a fastai `Metric` that
 holds `matrainer.metric_functions`' squared-error accumulator and converts once.
 
 * **It wraps nothing**, so it does not breach register-don't-wrap: there is no upstream fastai
@@ -590,8 +591,8 @@ checkout.
 ### Example
 
 ```bash
-examples/sweep/run_sweep.sh --tracker csv --epochs 5
-python -m matrainer.sweep report csv Thu_Aug_6_2026_1 --all
+matrainer sweep backends examples/sweep/sweep.yaml --tracker csv --save-dir ./runs --epochs 5
+matrainer sweep report csv Thu_Aug_6_2026_1 --save-dir ./runs --all
 ```
 
 ### What you may change

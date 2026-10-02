@@ -4,7 +4,7 @@ The keras twin of :mod:`distilaide.restoration_torch`: the task hooks written on
 Keras-family machinery bases — the compile/fit member (:class:`matrainer.keras.KerasRunnable`)
 and the native-TensorFlow loop (:class:`matrainer.tensorflow.TensorFlowRunnable`) — so the two
 concretes cannot drift apart on what restoration means in the keras vocabulary. A concrete
-backend composes ``(RestorationKerasHooks, RestorationBase, <Machinery>Runnable)``.
+backend composes ``(RestorationKerasHooks, <Machinery>Runnable)``; the hooks extend ``RestorationBase``.
 
 What the task says, in this vocabulary: the default loss is L1 (``MeanAbsoluteError`` — the
 same objective the torch backends default to, because a config moving between engines must not

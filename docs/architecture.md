@@ -72,6 +72,47 @@ The degradation (swap `GaussNoise` for a blur, a downsample, a JPEG round-trip �
 nothing about which one ran), the dataset, the raster. What you may NOT change is the ordering rule:
 a geometric op below the copy unpairs every record while still producing a valid-looking batch.
 
+### Amendment (2026-09-27): the scaling is an op of its own
+
+recordstream's `ToTensor` now converts HWC → CHW and nothing else, so the `normalize: true` in the
+Example above no longer exists. `data_range: 1.0` (record 2) is only true if BOTH halves are
+floats in `[0, 1]`; left as uint8 in `[0, 255]`, a run reports `psnr: -27` and `mse: 548` (hit on
+the first Keras run). The scaling is therefore an explicit op, and it obeys the ordering rule:
+
+* the torch chain puts `recordstream.ops.numpy.Scale {}` (no `field`, so it scales `image` AND
+  `target`) right before its two `ToTensor` steps;
+* a channels-last chain has no `ToTensor`, so it puts `albumentations.Normalize` with `std: 1` and
+  `max_pixel_value: 255` ABOVE the copy, and both halves inherit it.
+
+A side effect worth knowing: in the channels-last chain `GaussNoise` runs on float data, where
+albumentations reads `std_range` against a maximum of 1.0 instead of 255. The same `[0.1, 0.1]`
+is therefore the same sigma in both chains (measured: 0.0992 realised, against the torch chain's
+0.0993).
+
+```yaml
+preprocess:                                          # torch chain
+  - !class:recordstream.ops.image.ConvertToImage {field: image, width: 192, height: 192}
+  - !class:recordstream.ops.structure.CopyField  {src: image, dst: target}
+  - !class:albumentations.Compose
+    seed: 0
+    transforms:
+      - !class:albumentations.GaussNoise {std_range: [0.1, 0.1], p: 1.0}
+  - !class:recordstream.ops.numpy.Scale {}           # both halves -> float in [0, 1]
+  - !class:recordstream.ops.torch.ToTensor {field: image}
+  - !class:recordstream.ops.torch.ToTensor {field: target}
+
+keras: !scope:framework=keras
+  preprocess:                                        # channels-last: scale ABOVE the copy
+    - !class:recordstream.ops.image.ConvertToImage {field: image, width: 192, height: 192}
+    - !class:albumentations.Normalize {mean: [0.0, 0.0, 0.0], std: [1.0, 1.0, 1.0], max_pixel_value: 255.0}
+    - !class:recordstream.ops.structure.CopyField  {src: image, dst: target}
+    # ... the seeded GaussNoise Compose, as above
+```
+
+What you may change: the scaling op, as long as both halves end in the range `data_range`
+declares. What you may not do: scale one half only, or put the channels-last `Normalize` below the
+copy.
+
 ---
 
 ## 2. `data_range` is this task's `num_classes`
@@ -407,6 +448,37 @@ print(psnr(totals, data_range=1.0))     # one reduction, at the end
 Which metrics a split reports. What you may not do is give one engine a metric another cannot
 compute from the same config, or average PSNR per batch (see record 4).
 
+### Amendment (2026-08-06): fastai is a fourth answer
+
+The table above files fastai under torchmetrics. It is not: a `Learner` takes metrics by NAME from
+`fastai.metrics`, which has `mse` / `mae` / `rmse` / `msle` and nothing scale-aware. That left `psnr`
+as the one blank cell in the sweep's headline column (record 9). The fastai backend closes it with
+a CONFIGURED ALIAS: `distilaide.fastai_restorer.PeakSignalNoiseRatio`, a fastai `Metric` that
+holds `matrainer.metric_functions`' squared-error accumulator and converts once.
+
+* **It wraps nothing**, so it does not breach register-don't-wrap: there is no upstream fastai
+  PSNR. It supplies the accumulator fastai lacks for this quantity, as fastai's own `DiceMulti`
+  does for its own.
+* **An `AvgMetric` over a per-batch PSNR would be one line and wrong** (record 4). Measured on four
+  ragged batches: accumulating gives 7.796619, equal to `torchmetrics` to six decimals and the
+  same as feeding one batch; the per-batch mean gives 7.771327.
+* Its `name` is `psnr`, not the class name, so it fills the same column as the other seven
+  engines. The alias is tried BEFORE `fastai.metrics`, and it is why the fastai backend takes a
+  `data_range`.
+* It calls `.detach().cpu()` before accumulating: the shared accumulator is numpy-only, and
+  `np.asarray` cannot read a live accelerator tensor (a CPU-tensor unit test passed while the
+  first MPS run crashed).
+
+```yaml
+fastai: !scope:framework=fastai
+  runnable: !class:distilaide.FastaiRestorer
+    metrics: [psnr, mse]      # psnr -> the alias; mse -> fastai.metrics.mse
+```
+
+What you may change: add an alias where fastai lacks a quantity the other engines report. What
+you may not do: wrap an upstream fastai metric to make it registrable, or average per batch. Pin:
+`tests/test_fastai_psnr.py`.
+
 ---
 
 ## 8. Swin2SR refuses to train itself, which gives this task's HuggingFace backend a loss slot
@@ -653,3 +725,48 @@ Every `evaluate` scores the VAL split, fleet-wide.
 (`_build_trainer` / `_live_trackers` / `_run_eval` / `_report_epoch_metrics`) — extend through
 the hooks, or change the base in matrainer with every consumer updated in the same workspace
 change.
+
+---
+
+## 12. A run's output wiring is the `trackers` constructor slot
+
+*2026-08-06*
+
+### Context
+
+The trackers ARE a run's metric sinks and its provenance store: Lightning adapts each one through
+`matrainer.lightning.TrackerLogger`, and the other backends call matrainer's tracking functions.
+The obvious shape, a post-construction attribute, silently breaks YAML. confluid broadcasts a LIST
+onto a slot only when the slot's ANNOTATION admits one, so as an attribute a `trackers: [...]` key
+does nothing. Every unit test still passes, because the tests assign `.trackers` in Python.
+
+### Decision
+
+`trackers` is a constructor param of every concrete backend, annotated
+`Optional[Union[Partial[Tracker], Iterable[Partial[Tracker]]]]`, and stored VERBATIM. There is no
+`logger:` slot: framework loggers are not a second output path.
+
+### Consequences
+
+* Normalizing in `__init__` would iterate the value, and a deferred `Fluid` is not iterable. So
+  normalizing waits for matrainer's `_live_trackers()`, which flows the slot ONCE and writes the
+  result back. A `Fluid` flowed twice would be built twice: two MLflow runs for one training run.
+* The slot is declared on `matrainer.runnable.TrainerRunnable`, but each concrete restates it in its
+  own flat `__init__`, because that signature is what introspection reads (record 11).
+
+### Example
+
+```yaml
+trackers:
+  - !class:matrainer.MlflowTracker
+    experiment_name: gaussian_denoising
+  - !class:matrainer.CsvTracker
+    save_dir: ./runs
+```
+
+### What you may change
+
+Add a tracker kind. Do not move `trackers` off the constructor, narrow it to a bare `List`,
+normalize it in `__init__`, or add a `logger:` slot. Pins:
+`tests/test_restorers.py::test_trackers_is_a_constructor_param`,
+`tests/test_restorers.py::test_the_constructor_stores_trackers_verbatim`.

@@ -382,6 +382,14 @@ YAML declares.
 | `distilaide.keras_restoration` | The Keras losses + metrics, and the one PSNR shim. |
 | `distilaide.cli` | `train` / `evaluate` / `predict` / `frameworks`. |
 
+## Environment variables
+
+Listed with defaults in [`env.complete`](https://github.com/Gearlux/distilaide/blob/main/env.complete).
+
+| variable | meaning |
+| --- | --- |
+| `KERAS_BACKEND` | `torch`, `tensorflow` or `jax` — the engine the keras framework runs on |
+
 ## Dependencies
 
 | Package | Purpose | Required? |

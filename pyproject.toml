@@ -223,6 +223,7 @@ distilaide-mlx = "distilaide.mlx_restorer"
 distilaide-huggingface = "distilaide.huggingface_restorer"
 distilaide-huggingface-model = "distilaide.huggingface_model"
 distilaide-deepinv-model = "distilaide.deepinv_model"
+distilaide-iq-denoiser = "distilaide.iq_denoiser"
 distilaide-torch-restoration = "distilaide.torch_restoration"
 distilaide-keras-restoration = "distilaide.keras_restoration"
 # The shared DnCNN spec's implementations — one entry point each, like every other registering

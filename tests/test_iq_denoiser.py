@@ -1,12 +1,14 @@
 """The IQ denoiser: a 1D U-Net over [N, 2, L] recordings and the loss it trains with."""
 
+from typing import Tuple
+
 import pytest
 import torch
 
 from distilaide.iq_denoiser import IqDenoisingLoss, IqUNet
 
 
-def _pair(n: int = 4, length: int = 1000, snr_db: float = 10.0, seed: int = 0):
+def _pair(n: int = 4, length: int = 1000, snr_db: float = 10.0, seed: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
     gen = torch.Generator().manual_seed(seed)
     t = torch.arange(length) / length
     phase = 2 * torch.pi * (20 + 30 * torch.rand(n, 1, generator=gen)) * t

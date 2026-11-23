@@ -83,7 +83,8 @@ class IqUNet(nn.Module):
     Args:
         channels: Rows of the recording — 2 for I and Q.
         base_channels: Width of the first block; each stage down doubles it.
-        stages: Strided blocks down (and up): the recording is cut to ``2**stages`` times fewer samples at the bottleneck.
+        stages: Strided blocks down (and up): the recording is cut to ``2**stages`` times fewer samples at the
+            bottleneck.
         kernel_size: Odd convolution kernel, in samples.
         lstm_layers: Layers of the bidirectional LSTM at the bottleneck (0 leaves it out).
         residual: Predict the noise and subtract it from the input (the network starts near the identity, the do-nothing
@@ -164,8 +165,8 @@ class IqDenoisingLoss(nn.Module):
         fft_sizes: The STFT window lengths, samples (hop a quarter of each).
         time_weight: The sample-domain L1's weight.
         stft_weight: The STFT-magnitude term's weight.
-        eps: Added under the log and the norm so silence is finite — and, at 1e-3 against unit-rms input, so the spectrum
-            of a silent stretch is held to -60 dB rather than made to matter as much as a signal.
+        eps: Added under the log and the norm so silence is finite — and, at 1e-3 against unit-rms input, so the
+            spectrum of a silent stretch is held to -60 dB rather than made to matter as much as a signal.
     """
 
     def __init__(
@@ -184,7 +185,9 @@ class IqDenoisingLoss(nn.Module):
     def _magnitude(self, x: torch.Tensor, size: int) -> torch.Tensor:
         iq = torch.complex(x[:, 0].float(), x[:, 1].float())
         window = torch.hann_window(size, device=x.device)
-        return torch.stft(iq, size, hop_length=max(size // 4, 1), window=window, return_complex=True, onesided=False).abs()
+        return torch.stft(
+            iq, size, hop_length=max(size // 4, 1), window=window, return_complex=True, onesided=False
+        ).abs()
 
     def forward(self, preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         if preds.shape != targets.shape or preds.dim() != 3 or preds.shape[1] != 2:
@@ -198,12 +201,11 @@ class IqDenoisingLoss(nn.Module):
                 if preds.shape[-1] < size:
                     continue  # a recording shorter than the window has no frame of it
                 p, t = self._magnitude(preds, size), self._magnitude(targets, size)
-                # bounded in [0, 1] and zero for equal spectra, even where the target is silent (dividing by the target's
-                # norm alone made a silent clean window cost 1/eps)
+                # bounded in [0, 1] and zero for equal spectra, even where the target is silent (dividing by the
+                # target's norm alone made a silent clean window cost 1/eps)
                 convergence = torch.linalg.norm(t - p) / (torch.linalg.norm(t) + torch.linalg.norm(p) + self.eps)
                 log_magnitude = F.l1_loss(torch.log(p + self.eps), torch.log(t + self.eps))
                 terms.append(convergence + log_magnitude)
             if terms:
                 loss = loss + self.stft_weight * torch.stack(terms).mean()
         return loss
-

@@ -407,3 +407,7 @@ Listed with defaults in [`env.complete`](https://github.com/Gearlux/distilaide/b
 | `mlx` | The MLX backend (Apple silicon only) | `[mlx]` |
 | `transformers` + `accelerate` | The Swin2SR backend | `[huggingface]` |
 | `bm3d` | The BM3D classical baseline | `[bm3d]` |
+
+## License
+
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) (the `LICENSE` file): free for personal, academic and other noncommercial use. Commercial use needs a separate licence from the author.

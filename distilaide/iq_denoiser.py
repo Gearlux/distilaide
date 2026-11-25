@@ -37,7 +37,7 @@ class _Block(nn.Module):
         self.norm = nn.GroupNorm(groups, outputs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return cast(torch.Tensor, F.gelu(self.norm(self.conv(x))))
+        return F.gelu(self.norm(self.conv(x)))
 
 
 class _Network(nn.Module):

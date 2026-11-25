@@ -41,6 +41,9 @@ _BACKEND_NAMES = {
     "HuggingFaceRestorer": ("distilaide.huggingface_restorer", "huggingface"),
     "DeepInvModel": ("distilaide.deepinv_model", "torch"),
     "HuggingFaceRestorationModel": ("distilaide.huggingface_model", "huggingface"),
+    # The waveform denoiser: a 1D U-Net over [N, 2, L] IQ and its sample + STFT loss.
+    "IqUNet": ("distilaide.iq_denoiser", "torch"),
+    "IqDenoisingLoss": ("distilaide.iq_denoiser", "torch"),
     # The shared spec's implementations. `TorchDnCNN` serves EVERY torch backend (lightning,
     # torch, fastai — they differ in the loop, not in what a model is), which is why there is no
     # name per backend. Each names the SMALLEST extra that supplies it.

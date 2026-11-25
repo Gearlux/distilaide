@@ -18,32 +18,16 @@ workspace root `TASKS.md`. Completed items are not archived here — git history
 
 ## The comparison
 
-- [ ] **Seed the OTHER seven backends' models the way the torch family now is.** The
-      reproducibility work of 2026-08-06 was measured on `--framework torch` only, and the two
-      knobs it needed (a model seed that does not restore the RNG, plus `Compose(seed:)` on the
-      degradation) are in place for every chain — but only the torch path was verified end to end.
-      keras / tensorflow / jax / mlx each carry a model `seed:` already and each engine seeds its
-      own loop differently (`keras.utils.set_random_seed`, `mx.random.seed`, an explicit
-      `nnx.Rngs`), so each needs its own two-draw check. @medium
+- [ ] **Check run-to-run reproducibility on keras / tensorflow / jax / mlx.** Every backend's
+      model already carries a build-time `seed:` and every degradation is wrapped in a seeded
+      `Compose` (`tests/test_examples_load.py::TestTheConfigIsSeeded`), but two identical runs
+      were measured only on `--framework torch` (unseeded 22.7530 / 22.5188 dB, both seeded
+      22.1886 / 22.1886). Each other engine seeds its own loop differently
+      (`keras.utils.set_random_seed`, `mx.random.seed`, an explicit `nnx.Rngs`), so each needs its
+      own two-identical-runs check. @medium
 
-- [ ] **Give the sweep a longer default than the smoke run.** Measured 2026-08-06: at `--epochs 1` a
-      from-scratch `*DnCNN` row lands BELOW the 20.5 dB do-nothing baseline (tensorflow: 8.0 dB),
-      because a residual denoiser spends its first pass converging toward the identity. The driver
-      says so in its header and `--epochs 5` is what the table used, but a reader running the
-      script bare gets MLflow and the example's own 5 epochs, while `--epochs 1` looks like a
-      broken fleet rather than an unfinished one. @low
-- [ ] **`aim` and `tensorboard` are genuinely queryable and `matrainer.sweep` does not read them
-      yet** — `Repo.iter_runs()` and `EventAccumulator` respectively. Cross-project: the module is
-      matrainer's, and the sibling task projects would get it for free. @low
+## Defects and drift
 
-## Predictions
-
-- [ ] There is no image-writing predictions sink, so `distilaide predict` needs the caller to bring
-      one. A generic "write each `RestorationOutput` to a PNG" sink is recordstream's to own (the
-      `ClassificationPredictionsSink` precedent), not this project's. @medium
-
-## Still open from the adapter era
-
-- [ ] Spectrogram-aware adapter (apply an image denoiser to an STFT magnitude, preserve phase). The
-      bridge belongs in waivefront, which owns the signal domain — distilaide would supply only the
-      model. @low
+- [ ] **`distilaide evaluate examples/train_dncnn_denoising.yaml` (`README.md:8`) raises** @small @bug — `evaluate` runs the `test` task (`matrainer/matrainer/cli.py:72`, `VERB_TASKS`), which scores `test_set` and raises `ValueError: … .test() requires a 'test_set'.` when none is wired (`matrainer/matrainer/lightning/module.py:283-284`); `examples/train_dncnn_denoising.yaml` wires only `train_set` (`:112`) and `val_set` (`:119`). Read from the code, not run (a run downloads the dataset). Fix: wire a `test_set:` into the example (`deepinv/CBSD68`, which the README already recommends), or change the README command.
+- [ ] **The ordering pins never read the example config** @small @tests — `tests/test_examples_load.py:31-43` (`_example_chain`) rebuilds the example's `preprocess` chain in Python, so `test_the_resize_happens_before_the_copy` and `test_both_halves_land_in_the_same_value_range` pass whatever `examples/train_dncnn_denoising.yaml` says: reordering the YAML, or moving a channels-last chain's `Normalize` below the copy, fails nothing, and the four channels-last chains are unpinned. Load the YAML's chains instead.
+- [ ] **Five restorer modules restate the closed task set** @low @cleanup — `distilaide/{keras,tensorflow,jax,mlx,huggingface}_restorer.py` (lines 50, 55, 50, 44, 54) each write `RestorerTask = Literal["fit", "evaluate", "test", "predict"]`, while `lightning_restorer.py:41`, `torch_restorer.py:41` and `fastai_restorer.py:43` alias `recordstream.runnable.RunnableTask`: one closed set restated five times, against the workspace rule to derive it from one source.

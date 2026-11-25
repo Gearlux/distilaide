@@ -271,10 +271,17 @@ into one tracker, the three torch ones twice — once on the deepinv zoo wrapper
 shared 57,635-parameter DnCNN spec — so a column compares *frameworks* rather than networks.
 
 ```bash
-examples/sweep/run_sweep.sh --epochs 5                   # every installed backend, into MLflow
-examples/sweep/run_sweep.sh --tracker csv --epochs 5      # ...into the always-available CSV backend
-examples/sweep/run_sweep.sh --only jax,mlx --dry-run      # print the commands, run nothing
+matrainer sweep backends examples/sweep/sweep.yaml --epochs 5                                  # every installed backend, into MLflow
+matrainer sweep backends examples/sweep/sweep.yaml --tracker csv --save-dir ./runs --epochs 5  # ...into the always-available CSV backend
+matrainer sweep backends examples/sweep/sweep.yaml --only jax,mlx --dry-run                    # print the commands, run nothing
 ```
+
+`examples/sweep/sweep.yaml` is the matrix (which backends, which model variants, which
+trackers); the machinery that walks it ships with [matrainer](https://pypi.org/project/matrainer/)
+(`matrainer sweep`). `--save-dir` is where the per-run `.log` files land
+(`<save-dir>/<experiment>/<run>.log`, default `./sweep_logs`) and where the file-backed trackers'
+reports are read from (`<save-dir>/csv/`), so a sweep into the `csv` tracker passes
+`--save-dir ./runs` — the directory the overlay's `csv` block writes under.
 
 Eleven cells, and the two gaps are structural rather than unfinished:
 
@@ -304,7 +311,7 @@ The report is `matrainer`'s, since naming an experiment and reading it back are 
 tracker rather than anything restoration knows about:
 
 ```bash
-python -m matrainer.sweep report csv Thu_Aug_6_2026_1 --all
+matrainer sweep report csv Thu_Aug_6_2026_1 --save-dir ./runs --all
 ```
 
 Verified 2026-08-06 against MLflow, `--tracker mlflow --epochs 5` — **11/11 FINISHED**, every row
@@ -375,6 +382,14 @@ YAML declares.
 | `distilaide.keras_restoration` | The Keras losses + metrics, and the one PSNR shim. |
 | `distilaide.cli` | `train` / `evaluate` / `predict` / `frameworks`. |
 
+## Environment variables
+
+Listed with defaults in [`env.complete`](https://github.com/Gearlux/distilaide/blob/main/env.complete).
+
+| variable | meaning |
+| --- | --- |
+| `KERAS_BACKEND` | `torch`, `tensorflow` or `jax` — the engine the keras framework runs on |
+
 ## Dependencies
 
 | Package | Purpose | Required? |
@@ -383,7 +398,7 @@ YAML declares.
 | `recordstream` | Dataset engine, ops, collate, prediction contracts | yes |
 | `liquifai` | CLI framework | yes |
 | `loggair` | Structured logging | yes |
-| `matrainer` | Experiment tracking | yes |
+| `matrainer` | The training machinery behind every backend, and experiment tracking | yes |
 | `torch` + `torchmetrics` + `deepinv` + `albumentations` | The model zoo, metrics and degradation | `[torch]` |
 | `pytorch-lightning` | The reference backend | `[lightning]` |
 | `fastai` | The `Learner` backend | `[fastai]` |
@@ -392,3 +407,7 @@ YAML declares.
 | `mlx` | The MLX backend (Apple silicon only) | `[mlx]` |
 | `transformers` + `accelerate` | The Swin2SR backend | `[huggingface]` |
 | `bm3d` | The BM3D classical baseline | `[bm3d]` |
+
+## License
+
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) (the `LICENSE` file): free for personal, academic and other noncommercial use. Commercial use needs a separate licence from the author.

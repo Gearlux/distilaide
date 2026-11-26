@@ -7,8 +7,8 @@ and usage is in the [README](README.md). Root `AGENTS.md` rules are not repeated
 
 Image restoration (image → image) on eight backends, all driven by one config: `lightning`,
 `torch` (a hand-written loop), `fastai`, `keras`, `tensorflow`, `jax`, `mlx`, `huggingface`
-(Swin2SR). The canonical task is Gaussian denoising. On PyPI as pre-release `0.1.0a1`; the repo
-is private.
+(Swin2SR). The canonical task is Gaussian denoising. On PyPI as pre-release `0.1.0aN` (the version in `pyproject.toml`); the
+repo is public.
 
 Each runnable `<backend>_restorer.py` = task hooks (here) + a matrainer machinery base + its own
 full flat `__init__` (§11):
@@ -185,7 +185,7 @@ Pinned in `tests/test_restorers.py` unless noted.
   (`matrainer._exports.lazy_exports`) and names the smallest extra that supplies it; keep
   `_BACKEND_NAMES` in step with the extras. `bm3d` is its own extra. `torch_restoration.py`
   imports torch at module level on purpose. (`release.yml` smoke test)
-- Releases go through the hand-written `release.yml` (never generated) from a private repo.
+- Releases go through the hand-written `release.yml` (never generated) from the public repo.
   - Each release raises every workspace floor, core and extras, to the newest release and runs the suite there,
     and a dependent's next release raises its `distilaide>=` the same way (user choice 2026-11-26; aisland
     `tests/test_workspace_dependency_specs.py` checks each is satisfiable).

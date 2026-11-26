@@ -186,8 +186,9 @@ Pinned in `tests/test_restorers.py` unless noted.
   `_BACKEND_NAMES` in step with the extras. `bm3d` is its own extra. `torch_restoration.py`
   imports torch at module level on purpose. (`release.yml` smoke test)
 - Releases go through the hand-written `release.yml` (never generated) from a private repo.
-  - Workspace specs on distilaide read `>=0.1.0a1` (aisland
-    `tests/test_workspace_dependency_specs.py`).
+  - Each release raises every workspace floor, core and extras, to the newest release and runs the suite there,
+    and a dependent's next release raises its `distilaide>=` the same way (user choice 2026-11-26; aisland
+    `tests/test_workspace_dependency_specs.py` checks each is satisfiable).
   - README links are absolute GitHub URLs (`tests/test_docs_links.py`).
   - The newest CHANGELOG entry is the declared version; an `[Unreleased]` section above it is
     allowed (`tests/test_packaging.py`).
